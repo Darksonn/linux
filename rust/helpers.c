@@ -29,6 +29,8 @@
 #include <linux/errname.h>
 #include <linux/io.h>
 #include <linux/mutex.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/pci.h>
 #include <linux/rcupdate.h>
 #include <linux/refcount.h>
@@ -294,6 +296,28 @@ int rust_helper_devm_add_action(struct device *dev, void (*action)(void *), void
 	return devm_add_action(dev, action, data);
 }
 EXPORT_SYMBOL_GPL(rust_helper_devm_add_action);
+
+void *
+rust_helper_platform_get_drvdata(const struct platform_device *pdev)
+{
+	return platform_get_drvdata(pdev);
+}
+EXPORT_SYMBOL_GPL(rust_helper_platform_get_drvdata);
+
+void
+rust_helper_platform_set_drvdata(struct platform_device *pdev,
+				 void *data)
+{
+	platform_set_drvdata(pdev, data);
+}
+EXPORT_SYMBOL_GPL(rust_helper_platform_set_drvdata);
+
+const struct of_device_id *rust_helper_of_match_device(
+		const struct of_device_id *matches, const struct device *dev)
+{
+	return of_match_device(matches, dev);
+}
+EXPORT_SYMBOL_GPL(rust_helper_of_match_device);
 
 void rust_helper_pci_set_drvdata(struct pci_dev *pdev, void *data)
 {

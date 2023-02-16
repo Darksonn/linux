@@ -19,6 +19,7 @@
 #include <linux/mdio.h>
 #include <linux/pci.h>
 #include <linux/phy.h>
+#include <linux/platform_device.h>
 #include <linux/refcount.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
