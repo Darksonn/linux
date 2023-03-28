@@ -37,6 +37,7 @@ pub mod cred;
 pub mod error;
 pub mod file;
 pub mod init;
+pub mod io_buffer;
 pub mod ioctl;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
@@ -49,6 +50,7 @@ pub mod str;
 pub mod sync;
 pub mod task;
 pub mod types;
+pub mod user_ptr;
 pub mod workqueue;
 
 #[doc(hidden)]
