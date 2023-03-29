@@ -41,6 +41,7 @@ pub mod io_buffer;
 pub mod ioctl;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
+pub mod pages;
 pub mod prelude;
 pub mod print;
 mod static_assert;
