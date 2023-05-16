@@ -21,6 +21,7 @@
 #include <linux/sched.h>
 #include <linux/task_work.h>
 #include <linux/workqueue.h>
+#include <uapi/linux/android/binder.h>
 
 /* `bindgen` gets confused at certain things. */
 const size_t BINDINGS_ARCH_SLAB_MINALIGN = ARCH_SLAB_MINALIGN;
