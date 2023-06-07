@@ -19,7 +19,7 @@ use kernel::{
     mm,
     prelude::*,
     rbtree::RBTree,
-    sync::{lock::Guard, Arc, ArcBorrow, SpinLock},
+    sync::{lock::Guard, Arc, ArcBorrow, Mutex, SpinLock},
     task::Task,
     types::{ARef, Either},
     user_ptr::{UserSlicePtr, UserSlicePtrReader},
@@ -30,8 +30,9 @@ use crate::{
     context::Context,
     defs::*,
     error::BinderError,
+    node::{Node, NodeRef},
     thread::{PushWorkRes, Thread},
-    DLArc, DTRWrap, DeliverToRead,
+    DArc, DLArc, DTRWrap, DeliverToRead,
 };
 
 use core::mem::take;
@@ -41,9 +42,11 @@ const PROC_DEFER_RELEASE: u8 = 2;
 
 /// The fields of `Process` protected by the spinlock.
 pub(crate) struct ProcessInner {
+    is_manager: bool,
     pub(crate) is_dead: bool,
     threads: RBTree<i32, Arc<Thread>>,
     ready_threads: List<Thread>,
+    nodes: RBTree<usize, DArc<Node>>,
     work: List<DTRWrap<dyn DeliverToRead>>,
 
     /// The number of requested threads that haven't registered yet.
@@ -60,9 +63,11 @@ pub(crate) struct ProcessInner {
 impl ProcessInner {
     fn new() -> Self {
         Self {
+            is_manager: false,
             is_dead: false,
             threads: RBTree::new(),
             ready_threads: List::new(),
+            nodes: RBTree::new(),
             work: List::new(),
             requested_thread_count: 0,
             max_threads: 0,
@@ -80,7 +85,6 @@ impl ProcessInner {
     /// the caller so that the caller can drop it after releasing the inner process lock. This is
     /// necessary since the destructor of `Transaction` will take locks that can't necessarily be
     /// taken while holding the inner process lock.
-    #[allow(dead_code)]
     pub(crate) fn push_work(
         &mut self,
         work: DLArc<dyn DeliverToRead>,
@@ -102,6 +106,81 @@ impl ProcessInner {
         }
     }
 
+    pub(crate) fn remove_node(&mut self, ptr: usize) {
+        self.nodes.remove(&ptr);
+    }
+
+    /// Updates the reference count on the given node.
+    pub(crate) fn update_node_refcount(
+        &mut self,
+        node: &DArc<Node>,
+        inc: bool,
+        strong: bool,
+        count: usize,
+        othread: Option<&Thread>,
+    ) {
+        let push = node.update_refcount_locked(inc, strong, count, self);
+
+        // If we decided that we need to push work, push either to the process or to a thread if
+        // one is specified.
+        if push {
+            // It's not a problem if creating the ListArc fails, because that just means that
+            // it is already queued to a worklist.
+            if let Some(node) = ListArc::try_from_arc_or_drop(node.clone()) {
+                if let Some(thread) = othread {
+                    thread.push_work_deferred(node);
+                } else {
+                    let _ = self.push_work(node);
+                    // Nothing to do: `push_work` may fail if the process is dead, but that's ok as in
+                    // that case, it doesn't care about the notification.
+                }
+            }
+        }
+    }
+
+    pub(crate) fn new_node_ref(
+        &mut self,
+        node: DArc<Node>,
+        strong: bool,
+        thread: Option<&Thread>,
+    ) -> NodeRef {
+        self.update_node_refcount(&node, true, strong, 1, thread);
+        let strong_count = if strong { 1 } else { 0 };
+        NodeRef::new(node, strong_count, 1 - strong_count)
+    }
+
+    /// Returns an existing node with the given pointer and cookie, if one exists.
+    ///
+    /// Returns an error if a node with the given pointer but a different cookie exists.
+    fn get_existing_node(&self, ptr: usize, cookie: usize) -> Result<Option<DArc<Node>>> {
+        match self.nodes.get(&ptr) {
+            None => Ok(None),
+            Some(node) => {
+                let (_, node_cookie) = node.get_id();
+                if node_cookie == cookie {
+                    Ok(Some(node.clone()))
+                } else {
+                    Err(EINVAL)
+                }
+            }
+        }
+    }
+
+    /// Returns a reference to an existing node with the given pointer and cookie. It requires a
+    /// mutable reference because it needs to increment the ref count on the node, which may
+    /// require pushing work to the work queue (to notify userspace of 0 to 1 transitions).
+    fn get_existing_node_ref(
+        &mut self,
+        ptr: usize,
+        cookie: usize,
+        strong: bool,
+        thread: Option<&Thread>,
+    ) -> Result<Option<NodeRef>> {
+        Ok(self
+            .get_existing_node(ptr, cookie)?
+            .map(|node| self.new_node_ref(node, strong, thread)))
+    }
+
     fn register_thread(&mut self) -> bool {
         if self.requested_thread_count == 0 {
             return false;
@@ -110,6 +189,30 @@ impl ProcessInner {
         self.requested_thread_count -= 1;
         self.started_thread_count += 1;
         true
+    }
+}
+
+struct NodeRefInfo {
+    node_ref: NodeRef,
+}
+
+impl NodeRefInfo {
+    fn new(node_ref: NodeRef) -> Self {
+        Self { node_ref }
+    }
+}
+
+struct ProcessNodeRefs {
+    by_handle: RBTree<u32, NodeRefInfo>,
+    by_global_id: RBTree<u64, u32>,
+}
+
+impl ProcessNodeRefs {
+    fn new() -> Self {
+        Self {
+            by_handle: RBTree::new(),
+            by_global_id: RBTree::new(),
+        }
     }
 }
 
@@ -130,6 +233,11 @@ pub(crate) struct Process {
 
     #[pin]
     pub(crate) inner: SpinLock<ProcessInner>,
+
+    // Node references are in a different lock to avoid recursive acquisition when
+    // incrementing/decrementing a node in another process.
+    #[pin]
+    node_refs: Mutex<ProcessNodeRefs>,
 
     // Work node for deferred work item.
     #[pin]
@@ -182,6 +290,7 @@ impl Process {
             ctx,
             cred,
             inner <- kernel::new_spinlock!(ProcessInner::new(), "Process::inner"),
+            node_refs <- kernel::new_mutex!(ProcessNodeRefs::new(), "Process::node_refs"),
             task: kernel::current!().group_leader().into(),
             defer_work <- kernel::new_work!("Process::defer_work"),
             links <- ListLinks::new(),
@@ -241,6 +350,167 @@ impl Process {
         Ok(ta)
     }
 
+    fn set_as_manager(
+        self: ArcBorrow<'_, Self>,
+        info: Option<FlatBinderObject>,
+        thread: &Thread,
+    ) -> Result {
+        let (ptr, cookie, flags) = if let Some(obj) = info {
+            (
+                // SAFETY: The object type for this ioctl is implicitly `BINDER_TYPE_BINDER`, so it
+                // is safe to access the `binder` field.
+                unsafe { obj.__bindgen_anon_1.binder },
+                obj.cookie,
+                obj.flags,
+            )
+        } else {
+            (0, 0, 0)
+        };
+        let node_ref = self.get_node(ptr as _, cookie as _, flags as _, true, Some(thread))?;
+        let node = node_ref.node.clone();
+        self.ctx.set_manager_node(node_ref)?;
+        self.inner.lock().is_manager = true;
+
+        // Force the state of the node to prevent the delivery of acquire/increfs.
+        let mut owner_inner = node.owner.inner.lock();
+        node.force_has_count(&mut owner_inner);
+        Ok(())
+    }
+
+    pub(crate) fn get_node(
+        self: ArcBorrow<'_, Self>,
+        ptr: usize,
+        cookie: usize,
+        flags: u32,
+        strong: bool,
+        thread: Option<&Thread>,
+    ) -> Result<NodeRef> {
+        // Try to find an existing node.
+        {
+            let mut inner = self.inner.lock();
+            if let Some(node) = inner.get_existing_node_ref(ptr, cookie, strong, thread)? {
+                return Ok(node);
+            }
+        }
+
+        // Allocate the node before reacquiring the lock.
+        let node = DTRWrap::arc_pin_init(Node::new(ptr, cookie, flags, self.into()))?.into_arc();
+        let rbnode = RBTree::try_allocate_node(ptr, node.clone())?;
+        let mut inner = self.inner.lock();
+        if let Some(node) = inner.get_existing_node_ref(ptr, cookie, strong, thread)? {
+            return Ok(node);
+        }
+
+        inner.nodes.insert(rbnode);
+        Ok(inner.new_node_ref(node, strong, thread))
+    }
+
+    pub(crate) fn insert_or_update_handle(
+        &self,
+        node_ref: NodeRef,
+        is_mananger: bool,
+    ) -> Result<u32> {
+        {
+            let mut refs = self.node_refs.lock();
+
+            // Do a lookup before inserting.
+            if let Some(handle_ref) = refs.by_global_id.get(&node_ref.node.global_id) {
+                let handle = *handle_ref;
+                let info = refs.by_handle.get_mut(&handle).unwrap();
+                info.node_ref.absorb(node_ref);
+                return Ok(handle);
+            }
+        }
+
+        // Reserve memory for tree nodes.
+        let reserve1 = RBTree::try_reserve_node()?;
+        let reserve2 = RBTree::try_reserve_node()?;
+
+        let mut refs = self.node_refs.lock();
+
+        // Do a lookup again as node may have been inserted before the lock was reacquired.
+        if let Some(handle_ref) = refs.by_global_id.get(&node_ref.node.global_id) {
+            let handle = *handle_ref;
+            let info = refs.by_handle.get_mut(&handle).unwrap();
+            info.node_ref.absorb(node_ref);
+            return Ok(handle);
+        }
+
+        // Find id.
+        let mut target: u32 = if is_mananger { 0 } else { 1 };
+        for handle in refs.by_handle.keys() {
+            if *handle > target {
+                break;
+            }
+            if *handle == target {
+                target = target.checked_add(1).ok_or(ENOMEM)?;
+            }
+        }
+
+        // Ensure the process is still alive while we insert a new reference.
+        let inner = self.inner.lock();
+        if inner.is_dead {
+            return Err(ESRCH);
+        }
+        refs.by_global_id
+            .insert(reserve1.into_node(node_ref.node.global_id, target));
+        refs.by_handle
+            .insert(reserve2.into_node(target, NodeRefInfo::new(node_ref)));
+        Ok(target)
+    }
+
+    pub(crate) fn get_node_from_handle(&self, handle: u32, strong: bool) -> Result<NodeRef> {
+        self.node_refs
+            .lock()
+            .by_handle
+            .get(&handle)
+            .ok_or(ENOENT)?
+            .node_ref
+            .clone(strong)
+    }
+
+    pub(crate) fn update_ref(&self, handle: u32, inc: bool, strong: bool) -> Result {
+        if inc && handle == 0 {
+            if let Ok(node_ref) = self.ctx.get_manager_node(strong) {
+                if core::ptr::eq(self, &*node_ref.node.owner) {
+                    return Err(EINVAL);
+                }
+                let _ = self.insert_or_update_handle(node_ref, true);
+                return Ok(());
+            }
+        }
+
+        // To preserve original binder behaviour, we only fail requests where the manager tries to
+        // increment references on itself.
+        let mut refs = self.node_refs.lock();
+        if let Some(info) = refs.by_handle.get_mut(&handle) {
+            if info.node_ref.update(inc, strong) {
+                // Remove reference from process tables.
+                let id = info.node_ref.node.global_id;
+                refs.by_handle.remove(&handle);
+                refs.by_global_id.remove(&id);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn inc_ref_done(&self, reader: &mut UserSlicePtrReader, strong: bool) -> Result {
+        let ptr = reader.read::<usize>()?;
+        let cookie = reader.read::<usize>()?;
+        let mut inner = self.inner.lock();
+        if let Ok(Some(node)) = inner.get_existing_node(ptr, cookie) {
+            if node.inc_ref_done_locked(strong, &mut inner) {
+                // It's not a problem if creating the ListArc fails, because that just means that
+                // it is already queued to a worklist.
+                if let Some(node) = ListArc::try_from_arc_or_drop(node) {
+                    // This only fails if the process is dead.
+                    let _ = inner.push_work(node);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn version(&self, data: UserSlicePtr) -> Result {
         data.writer().write(&BinderVersion::current())
     }
@@ -256,6 +526,57 @@ impl Process {
 
     fn set_max_threads(&self, max: u32) {
         self.inner.lock().max_threads = max;
+    }
+
+    fn get_node_debug_info(&self, data: UserSlicePtr) -> Result {
+        let (mut reader, mut writer) = data.reader_writer();
+
+        // Read the starting point.
+        let ptr = reader.read::<BinderNodeDebugInfo>()?.ptr as usize;
+        let mut out = BinderNodeDebugInfo::default();
+
+        {
+            let inner = self.inner.lock();
+            for (node_ptr, node) in &inner.nodes {
+                if *node_ptr > ptr {
+                    node.populate_debug_info(&mut out, &inner);
+                    break;
+                }
+            }
+        }
+
+        writer.write(&out)
+    }
+
+    fn get_node_info_from_ref(&self, data: UserSlicePtr) -> Result {
+        let (mut reader, mut writer) = data.reader_writer();
+        let mut out = reader.read::<BinderNodeInfoForRef>()?;
+
+        if out.strong_count != 0
+            || out.weak_count != 0
+            || out.reserved1 != 0
+            || out.reserved2 != 0
+            || out.reserved3 != 0
+        {
+            return Err(EINVAL);
+        }
+
+        // Only the context manager is allowed to use this ioctl.
+        if !self.inner.lock().is_manager {
+            return Err(EPERM);
+        }
+
+        let node_ref = self
+            .get_node_from_handle(out.handle, true)
+            .or(Err(EINVAL))?;
+        // Get the counts from the node.
+        {
+            let owner_inner = node_ref.node.owner.inner.lock();
+            node_ref.node.populate_counts(&mut out, &owner_inner);
+        }
+
+        // Write the result back.
+        writer.write(&out)
     }
 
     pub(crate) fn needs_thread(&self) -> bool {
@@ -277,7 +598,15 @@ impl Process {
     }
 
     fn deferred_release(self: Arc<Self>) {
-        self.inner.lock().is_dead = true;
+        let is_manager = {
+            let mut inner = self.inner.lock();
+            inner.is_dead = true;
+            inner.is_manager
+        };
+
+        if is_manager {
+            self.ctx.unset_manager_node();
+        }
 
         self.ctx.deregister_process(&self);
 
@@ -327,6 +656,10 @@ impl Process {
         match cmd {
             bindings::BINDER_SET_MAX_THREADS => this.set_max_threads(reader.read()?),
             bindings::BINDER_THREAD_EXIT => this.remove_thread(thread),
+            bindings::BINDER_SET_CONTEXT_MGR => this.set_as_manager(None, &thread)?,
+            bindings::BINDER_SET_CONTEXT_MGR_EXT => {
+                this.set_as_manager(Some(reader.read()?), &thread)?
+            }
             _ => return Err(EINVAL),
         }
         Ok(0)
@@ -342,6 +675,8 @@ impl Process {
         let blocking = (file.flags() & file::flags::O_NONBLOCK) == 0;
         match cmd {
             bindings::BINDER_WRITE_READ => thread.write_read(data, blocking)?,
+            bindings::BINDER_GET_NODE_DEBUG_INFO => this.get_node_debug_info(data)?,
+            bindings::BINDER_GET_NODE_INFO_FOR_REF => this.get_node_info_from_ref(data)?,
             bindings::BINDER_VERSION => this.version(data)?,
             bindings::BINDER_GET_EXTENDED_ERROR => thread.get_extended_error(data)?,
             _ => return Err(EINVAL),
