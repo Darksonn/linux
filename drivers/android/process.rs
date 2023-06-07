@@ -15,18 +15,24 @@ use kernel::{
     cred::Credential,
     file::{self, File, PollTable},
     io_buffer::{IoBufferReader, IoBufferWriter},
-    list::{HasListLinks, ListArc, ListArcSafe, ListItem, ListLinks},
+    list::{HasListLinks, List, ListArc, ListArcSafe, ListItem, ListLinks},
     mm,
     prelude::*,
     rbtree::RBTree,
-    sync::{Arc, ArcBorrow, SpinLock},
+    sync::{lock::Guard, Arc, ArcBorrow, SpinLock},
     task::Task,
-    types::ARef,
+    types::{ARef, Either},
     user_ptr::{UserSlicePtr, UserSlicePtrReader},
     workqueue::{self, Work},
 };
 
-use crate::{context::Context, defs::*, thread::Thread};
+use crate::{
+    context::Context,
+    defs::*,
+    error::BinderError,
+    thread::{PushWorkRes, Thread},
+    DLArc, DTRWrap, DeliverToRead,
+};
 
 use core::mem::take;
 
@@ -35,8 +41,10 @@ const PROC_DEFER_RELEASE: u8 = 2;
 
 /// The fields of `Process` protected by the spinlock.
 pub(crate) struct ProcessInner {
-    is_dead: bool,
+    pub(crate) is_dead: bool,
     threads: RBTree<i32, Arc<Thread>>,
+    ready_threads: List<Thread>,
+    work: List<DTRWrap<dyn DeliverToRead>>,
 
     /// The number of requested threads that haven't registered yet.
     requested_thread_count: u32,
@@ -54,10 +62,43 @@ impl ProcessInner {
         Self {
             is_dead: false,
             threads: RBTree::new(),
+            ready_threads: List::new(),
+            work: List::new(),
             requested_thread_count: 0,
             max_threads: 0,
             started_thread_count: 0,
             defer_work: 0,
+        }
+    }
+
+    /// Schedule the work item for execution on this process.
+    ///
+    /// If any threads are ready for work, then the work item is given directly to that thread and
+    /// it is woken up. Otherwise, it is pushed to the process work list.
+    ///
+    /// This call can fail only if the process is dead. In this case, the work item is returned to
+    /// the caller so that the caller can drop it after releasing the inner process lock. This is
+    /// necessary since the destructor of `Transaction` will take locks that can't necessarily be
+    /// taken while holding the inner process lock.
+    #[allow(dead_code)]
+    pub(crate) fn push_work(
+        &mut self,
+        work: DLArc<dyn DeliverToRead>,
+    ) -> Result<(), (BinderError, DLArc<dyn DeliverToRead>)> {
+        // Try to find a ready thread to which to push the work.
+        if let Some(thread) = self.ready_threads.pop_front() {
+            // Push to thread while holding state lock. This prevents the thread from giving up
+            // (for example, because of a signal) when we're about to deliver work.
+            match thread.push_work(work) {
+                PushWorkRes::Ok => Ok(()),
+                PushWorkRes::FailedDead(work) => Err((BinderError::new_dead(), work)),
+            }
+        } else if self.is_dead {
+            Err((BinderError::new_dead(), work))
+        } else {
+            // There are no ready threads. Push work to process queue.
+            self.work.push_back(work);
+            Ok(())
         }
     }
 
@@ -152,6 +193,31 @@ impl Process {
         Ok(process)
     }
 
+    /// Attempts to fetch a work item from the process queue.
+    pub(crate) fn get_work(&self) -> Option<DLArc<dyn DeliverToRead>> {
+        self.inner.lock().work.pop_front()
+    }
+
+    /// Attempts to fetch a work item from the process queue. If none is available, it registers the
+    /// given thread as ready to receive work directly.
+    ///
+    /// This must only be called when the thread is not participating in a transaction chain; when
+    /// it is, work will always be delivered directly to the thread (and not through the process
+    /// queue).
+    pub(crate) fn get_work_or_register<'a>(
+        &'a self,
+        thread: &'a Arc<Thread>,
+    ) -> Either<DLArc<dyn DeliverToRead>, Registration<'a>> {
+        let mut inner = self.inner.lock();
+        // Try to get work from the process queue.
+        if let Some(work) = inner.work.pop_front() {
+            return Either::Left(work);
+        }
+
+        // Register the thread as ready.
+        Either::Right(Registration::new(self, thread, &mut inner))
+    }
+
     fn get_thread(self: ArcBorrow<'_, Self>, id: i32) -> Result<Arc<Thread>> {
         {
             let inner = self.inner.lock();
@@ -194,8 +260,9 @@ impl Process {
 
     pub(crate) fn needs_thread(&self) -> bool {
         let mut inner = self.inner.lock();
-        let ret =
-            inner.requested_thread_count == 0 && inner.started_thread_count < inner.max_threads;
+        let ret = inner.requested_thread_count == 0
+            && inner.ready_threads.is_empty()
+            && inner.started_thread_count < inner.max_threads;
         if ret {
             inner.requested_thread_count += 1
         }
@@ -203,13 +270,21 @@ impl Process {
     }
 
     fn deferred_flush(&self) {
-        // NOOP for now.
+        let inner = self.inner.lock();
+        for thread in inner.threads.values() {
+            thread.exit_looper();
+        }
     }
 
     fn deferred_release(self: Arc<Self>) {
         self.inner.lock().is_dead = true;
 
         self.ctx.deregister_process(&self);
+
+        // Cancel all pending work items.
+        while let Some(work) = self.get_work() {
+            work.into_arc().cancel();
+        }
 
         // Move the threads out of `inner` so that we can iterate over them without holding the
         // lock.
@@ -339,5 +414,40 @@ impl Process {
         _table: &mut PollTable,
     ) -> Result<u32> {
         Err(EINVAL)
+    }
+}
+
+/// Represents that a thread has registered with the `ready_threads` list of its process.
+///
+/// The destructor of this type will unregister the thread from the list of ready threads.
+pub(crate) struct Registration<'a> {
+    process: &'a Process,
+    thread: &'a Arc<Thread>,
+}
+
+impl<'a> Registration<'a> {
+    fn new(
+        process: &'a Process,
+        thread: &'a Arc<Thread>,
+        guard: &mut Guard<'_, ProcessInner, kernel::sync::lock::spinlock::SpinLockBackend>,
+    ) -> Self {
+        assert!(core::ptr::eq(process, &*thread.process));
+        // INVARIANT: We are pushing this thread to the right `ready_threads` list.
+        if let Ok(list_arc) = ListArc::try_from_arc(thread.clone()) {
+            guard.ready_threads.push_front(list_arc);
+        } else {
+            pr_warn!("Same thread registered with `ready_threads` twice.");
+        }
+        Self { process, thread }
+    }
+}
+
+impl Drop for Registration<'_> {
+    fn drop(&mut self) {
+        let mut inner = self.process.inner.lock();
+        // SAFETY: The thread has the invariant that we never push it to any other linked list than
+        // the `ready_threads` list of its parent process. Therefore, the thread is either in that
+        // list, or in no list.
+        unsafe { inner.ready_threads.remove(self.thread) };
     }
 }
