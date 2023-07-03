@@ -28,6 +28,7 @@ extern crate self as kernel;
 
 pub mod alloc;
 mod build_assert;
+pub mod cred;
 pub mod error;
 pub mod file;
 pub mod init;
