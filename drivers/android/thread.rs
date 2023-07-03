@@ -9,17 +9,25 @@ use kernel::{
     bindings,
     io_buffer::{IoBufferReader, IoBufferWriter},
     list::{
-        AtomicListArcTracker, HasListLinks, List, ListArcSafe, ListItem, ListLinks, TryNewListArc,
+        AtomicListArcTracker, HasListLinks, List, ListArc, ListArcSafe, ListItem, ListLinks,
+        TryNewListArc,
     },
     prelude::*,
+    security,
     sync::{Arc, CondVar, SpinLock},
     types::Either,
-    user_ptr::UserSlicePtr,
+    user_ptr::{UserSlicePtr, UserSlicePtrWriter},
 };
 
-use crate::{defs::*, process::Process, DLArc, DTRWrap, DeliverToRead};
+use crate::{
+    allocation::Allocation, defs::*, error::BinderResult, process::Process, ptr_align,
+    transaction::Transaction, DArc, DLArc, DTRWrap, DeliverCode, DeliverToRead,
+};
 
-use core::mem::size_of;
+use core::{
+    mem::size_of,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 pub(crate) enum PushWorkRes {
     Ok,
@@ -47,6 +55,10 @@ struct InnerThread {
     /// Determines if thread is dead.
     is_dead: bool,
 
+    /// Work item used to deliver error codes to the current thread. Stored here so that it can be
+    /// reused.
+    return_work: DArc<ThreadError>,
+
     /// Determines whether the work list below should be processed. When set to false, `work_list`
     /// is treated as if it were empty.
     process_work_list: bool,
@@ -65,22 +77,21 @@ const LOOPER_WAITING: u32 = 0x10;
 const LOOPER_WAITING_PROC: u32 = 0x20;
 
 impl InnerThread {
-    fn new() -> Self {
-        use core::sync::atomic::{AtomicU32, Ordering};
-
+    fn new() -> Result<Self> {
         fn next_err_id() -> u32 {
             static EE_ID: AtomicU32 = AtomicU32::new(0);
             EE_ID.fetch_add(1, Ordering::Relaxed)
         }
 
-        Self {
+        Ok(Self {
             looper_flags: 0,
             looper_need_return: false,
             is_dead: false,
             process_work_list: false,
+            return_work: ThreadError::try_new()?,
             work_list: List::new(),
             extended_error: ExtendedError::new(next_err_id(), BR_OK, 0),
-        }
+        })
     }
 
     fn pop_work(&mut self) -> Option<DLArc<dyn DeliverToRead>> {
@@ -100,6 +111,15 @@ impl InnerThread {
             self.work_list.push_back(work);
             self.process_work_list = true;
             PushWorkRes::Ok
+        }
+    }
+
+    fn push_return_work(&mut self, reply: u32) {
+        if let Ok(work) = ListArc::try_from_arc(self.return_work.clone()) {
+            work.set_error_code(reply);
+            self.push_work(work);
+        } else {
+            pr_warn!("Thread return work is already in use.");
         }
     }
 
@@ -175,10 +195,12 @@ kernel::list::impl_list_item! {
 
 impl Thread {
     pub(crate) fn new(id: i32, process: Arc<Process>) -> Result<Arc<Self>> {
+        let inner = InnerThread::new()?;
+
         Arc::pin_init(pin_init!(Thread {
             id,
             process,
-            inner <- kernel::new_spinlock!(InnerThread::new(), "Thread::inner"),
+            inner <- kernel::new_spinlock!(inner, "Thread::inner"),
             work_condvar <- kernel::new_condvar!("Thread::work_condvar"),
             links <- ListLinks::new(),
             links_track <- AtomicListArcTracker::new(),
@@ -312,15 +334,131 @@ impl Thread {
         self.inner.lock().push_work_deferred(work);
     }
 
+    pub(crate) fn copy_transaction_data(
+        &self,
+        to_process: Arc<Process>,
+        tr: &BinderTransactionDataSg,
+        txn_security_ctx_offset: Option<&mut usize>,
+    ) -> BinderResult<Allocation> {
+        let trd = &tr.transaction_data;
+        let is_oneway = trd.flags & TF_ONE_WAY != 0;
+        let mut secctx = if let Some(offset) = txn_security_ctx_offset {
+            let secid = self.process.cred.get_secid();
+            let ctx = match security::SecurityCtx::from_secid(secid) {
+                Ok(ctx) => ctx,
+                Err(err) => {
+                    pr_warn!("Failed to get security ctx for id {}: {:?}", secid, err);
+                    return Err(err.into());
+                }
+            };
+            Some((offset, ctx))
+        } else {
+            None
+        };
+
+        let data_size = trd.data_size.try_into().map_err(|_| EINVAL)?;
+        let adata_size = ptr_align(data_size);
+        let asecctx_size = secctx
+            .as_ref()
+            .map(|(_, ctx)| ptr_align(ctx.len()))
+            .unwrap_or(0);
+
+        // This guarantees that at least `sizeof(usize)` bytes will be allocated.
+        let len = usize::max(
+            adata_size.checked_add(asecctx_size).ok_or(ENOMEM)?,
+            size_of::<usize>(),
+        );
+        let secctx_off = adata_size;
+        let alloc = match to_process.buffer_alloc(len, is_oneway) {
+            Ok(alloc) => alloc,
+            Err(err) => {
+                pr_warn!(
+                    "Failed to allocate buffer. len:{}, is_oneway:{}",
+                    len,
+                    is_oneway
+                );
+                return Err(err);
+            }
+        };
+
+        let mut buffer_reader =
+            unsafe { UserSlicePtr::new(trd.data.ptr.buffer as _, data_size) }.reader();
+
+        alloc.copy_into(&mut buffer_reader, 0, data_size)?;
+
+        if let Some((off_out, secctx)) = secctx.as_mut() {
+            if let Err(err) = alloc.write(secctx_off, secctx.as_bytes()) {
+                pr_warn!("Failed to write security context: {:?}", err);
+                return Err(err.into());
+            }
+            **off_out = secctx_off;
+        }
+        Ok(alloc)
+    }
+
+    fn transaction<T>(self: &Arc<Self>, tr: &BinderTransactionDataSg, inner: T)
+    where
+        T: FnOnce(&Arc<Self>, &BinderTransactionDataSg) -> BinderResult,
+    {
+        if let Err(err) = inner(self, tr) {
+            if err.reply != BR_TRANSACTION_COMPLETE {
+                let mut ee = self.inner.lock().extended_error;
+                ee.command = err.reply;
+                ee.param = err.as_errno();
+                pr_warn!(
+                    "Transaction failed: {:?} my_pid:{}",
+                    err,
+                    self.process.task.pid_in_current_ns()
+                );
+            }
+
+            self.inner.lock().push_return_work(err.reply);
+        }
+    }
+
+    fn oneway_transaction_inner(self: &Arc<Self>, tr: &BinderTransactionDataSg) -> BinderResult {
+        let handle = unsafe { tr.transaction_data.target.handle };
+        let node_ref = self.process.get_transaction_node(handle)?;
+        security::binder_transaction(&self.process.cred, &node_ref.node.owner.cred)?;
+        let list_completion = DTRWrap::arc_try_new(DeliverCode::new(BR_TRANSACTION_COMPLETE))?;
+        let transaction = Transaction::new(node_ref, self, tr)?;
+        let completion = list_completion.clone_arc();
+        self.inner.lock().push_work(list_completion);
+        match transaction.submit() {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                completion.skip();
+                Err(err)
+            }
+        }
+    }
+
     fn write(self: &Arc<Self>, req: &mut BinderWriteRead) -> Result {
         let write_start = req.write_buffer.wrapping_add(req.write_consumed);
         let write_len = req.write_size - req.write_consumed;
         let mut reader = UserSlicePtr::new(write_start as _, write_len as _).reader();
 
-        while reader.len() >= size_of::<u32>() {
+        while reader.len() >= size_of::<u32>() && self.inner.lock().return_work.is_unused() {
             let before = reader.len();
             let cmd = reader.read::<u32>()?;
             match cmd {
+                BC_TRANSACTION => {
+                    let tr = reader.read::<BinderTransactionData>()?.with_buffers_size(0);
+                    if tr.transaction_data.flags & TF_ONE_WAY != 0 {
+                        self.transaction(&tr, Self::oneway_transaction_inner);
+                    } else {
+                        return Err(EINVAL);
+                    }
+                }
+                BC_TRANSACTION_SG => {
+                    let tr = reader.read::<BinderTransactionDataSg>()?;
+                    if tr.transaction_data.flags & TF_ONE_WAY != 0 {
+                        self.transaction(&tr, Self::oneway_transaction_inner);
+                    } else {
+                        return Err(EINVAL);
+                    }
+                }
+                BC_FREE_BUFFER => drop(self.process.buffer_get(reader.read()?)),
                 BC_INCREFS => self.process.update_ref(reader.read()?, true, false)?,
                 BC_ACQUIRE => self.process.update_ref(reader.read()?, true, true)?,
                 BC_RELEASE => self.process.update_ref(reader.read()?, false, true)?,
@@ -473,5 +611,53 @@ impl Thread {
         while let Ok(Some(work)) = self.get_work_local(false) {
             work.into_arc().cancel();
         }
+    }
+}
+
+#[pin_data]
+struct ThreadError {
+    error_code: AtomicU32,
+    #[pin]
+    links_track: AtomicListArcTracker,
+}
+
+impl ThreadError {
+    fn try_new() -> Result<DArc<Self>> {
+        DTRWrap::arc_pin_init(pin_init!(Self {
+            error_code: AtomicU32::new(BR_OK),
+            links_track <- AtomicListArcTracker::new(),
+        }))
+        .map(ListArc::into_arc)
+    }
+
+    fn set_error_code(&self, code: u32) {
+        self.error_code.store(code, Ordering::Relaxed);
+    }
+
+    fn is_unused(&self) -> bool {
+        self.error_code.load(Ordering::Relaxed) == BR_OK
+    }
+}
+
+impl DeliverToRead for ThreadError {
+    fn do_work(
+        self: DArc<Self>,
+        _thread: &Thread,
+        writer: &mut UserSlicePtrWriter,
+    ) -> Result<bool> {
+        let code = self.error_code.load(Ordering::Relaxed);
+        self.error_code.store(BR_OK, Ordering::Relaxed);
+        writer.write(&code)?;
+        Ok(true)
+    }
+
+    fn should_sync_wakeup(&self) -> bool {
+        false
+    }
+}
+
+kernel::list::impl_list_arc_safe! {
+    impl ListArcSafe<0> for ThreadError {
+        tracked_by links_track: AtomicListArcTracker;
     }
 }
