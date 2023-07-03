@@ -49,7 +49,6 @@ pub(crate) struct Node {
     pub(crate) global_id: u64,
     ptr: usize,
     cookie: usize,
-    #[allow(dead_code)]
     pub(crate) flags: u32,
     pub(crate) owner: Arc<Process>,
     inner: LockedBy<NodeInner, ProcessInner>,

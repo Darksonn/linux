@@ -17,6 +17,13 @@ pub fn binder_set_context_mgr(mgr: &Credential) -> Result {
     to_result(unsafe { bindings::security_binder_set_context_mgr(mgr.0.get()) })
 }
 
+/// Calls the security modules to determine if binder transactions are allowed from task `from` to
+/// task `to`.
+pub fn binder_transaction(from: &Credential, to: &Credential) -> Result {
+    // SAFETY: `from` and `to` are valid because the shared references guarantee nonzero refcounts.
+    to_result(unsafe { bindings::security_binder_transaction(from.0.get(), to.0.get()) })
+}
+
 /// A security context string.
 ///
 /// The struct has the invariant that it always contains a valid security context.
