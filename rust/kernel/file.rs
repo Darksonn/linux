@@ -7,6 +7,7 @@
 
 use crate::{
     bindings,
+    cred::Credential,
     error::{code::*, Error, Result},
     types::{ARef, AlwaysRefCounted, Opaque},
 };
@@ -136,6 +137,21 @@ impl File {
         // INVARIANT: The safety requirements guarantee that the refcount does not hit zero during
         // 'a. The cast is okay because `File` is `repr(transparent)`.
         unsafe { &*ptr.cast() }
+    }
+
+    /// Returns the credentials of the task that originally opened the file.
+    pub fn cred(&self) -> &Credential {
+        // This `read_volatile` is intended to correspond to a READ_ONCE call.
+        //
+        // SAFETY: The file is valid because the shared reference guarantees a nonzero refcount.
+        //
+        // TODO: Replace with `read_once` when available on the Rust side.
+        let ptr = unsafe { core::ptr::addr_of!((*self.0.get()).f_cred).read_volatile() };
+
+        // SAFETY: The signature of this function ensures that the caller will only access the
+        // returned credential while the file is still valid, and the credential must stay valid
+        // while the file is valid.
+        unsafe { Credential::from_ptr(ptr) }
     }
 
     /// Returns the flags associated with the file.
