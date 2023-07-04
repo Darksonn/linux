@@ -7,6 +7,7 @@
 
 use kernel::{
     bindings,
+    file::{File, PollCondVar, PollTable},
     io_buffer::{IoBufferReader, IoBufferWriter},
     list::{
         AtomicListArcTracker, HasListLinks, List, ListArc, ListArcSafe, ListItem, ListLinks,
@@ -14,7 +15,7 @@ use kernel::{
     },
     prelude::*,
     security,
-    sync::{Arc, CondVar, SpinLock},
+    sync::{Arc, SpinLock},
     types::Either,
     user_ptr::{UserSlicePtr, UserSlicePtrWriter},
 };
@@ -75,6 +76,7 @@ const LOOPER_EXITED: u32 = 0x04;
 const LOOPER_INVALID: u32 = 0x08;
 const LOOPER_WAITING: u32 = 0x10;
 const LOOPER_WAITING_PROC: u32 = 0x20;
+const LOOPER_POLL: u32 = 0x40;
 
 impl InnerThread {
     fn new() -> Result<Self> {
@@ -159,6 +161,15 @@ impl InnerThread {
     fn should_use_process_work_queue(&self) -> bool {
         !self.process_work_list && self.is_looper()
     }
+
+    fn poll(&mut self) -> u32 {
+        self.looper_flags |= LOOPER_POLL;
+        if self.process_work_list || self.looper_need_return {
+            bindings::POLLIN
+        } else {
+            0
+        }
+    }
 }
 
 /// This represents a thread that's used with binder.
@@ -169,7 +180,7 @@ pub(crate) struct Thread {
     #[pin]
     inner: SpinLock<InnerThread>,
     #[pin]
-    work_condvar: CondVar,
+    work_condvar: PollCondVar,
     /// Used to insert this thread into the process' `ready_threads` list.
     ///
     /// INVARIANT: May never be used for any other list than the `self.process.ready_threads`.
@@ -201,7 +212,7 @@ impl Thread {
             id,
             process,
             inner <- kernel::new_spinlock!(inner, "Thread::inner"),
-            work_condvar <- kernel::new_condvar!("Thread::work_condvar"),
+            work_condvar <- kernel::new_poll_condvar!("Thread::work_condvar"),
             links <- ListLinks::new(),
             links_track <- AtomicListArcTracker::new(),
         }))
@@ -590,6 +601,12 @@ impl Thread {
         ret
     }
 
+    pub(crate) fn poll(&self, file: &File, table: &mut PollTable) -> (bool, u32) {
+        table.register_wait(file, &self.work_condvar);
+        let mut inner = self.inner.lock();
+        (inner.should_use_process_work_queue(), inner.poll())
+    }
+
     /// Make the call to `get_work` or `get_work_local` return immediately, if any.
     pub(crate) fn exit_looper(&self) {
         let mut inner = self.inner.lock();
@@ -601,6 +618,22 @@ impl Thread {
 
         if should_notify {
             self.work_condvar.notify_one();
+        }
+    }
+
+    pub(crate) fn notify_if_poll_ready(&self, sync: bool) {
+        // Determine if we need to notify. This requires the lock.
+        let inner = self.inner.lock();
+        let notify = inner.looper_flags & LOOPER_POLL != 0 && inner.should_use_process_work_queue();
+        drop(inner);
+
+        // Now that the lock is no longer held, notify the waiters if we have to.
+        if notify {
+            if sync {
+                self.work_condvar.notify_sync();
+            } else {
+                self.work_condvar.notify_one();
+            }
         }
     }
 
