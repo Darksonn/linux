@@ -122,8 +122,16 @@ impl ProcessInner {
         } else if self.is_dead {
             Err((BinderError::new_dead(), work))
         } else {
+            let sync = work.should_sync_wakeup();
+
             // There are no ready threads. Push work to process queue.
             self.work.push_back(work);
+
+            // Wake up polling threads, if any.
+            for thread in self.threads.values() {
+                thread.notify_if_poll_ready(sync);
+            }
+
             Ok(())
         }
     }
@@ -897,11 +905,16 @@ impl Process {
     }
 
     pub(crate) fn poll(
-        _this: ArcBorrow<'_, Process>,
-        _file: &File,
-        _table: &mut PollTable,
+        this: ArcBorrow<'_, Process>,
+        file: &File,
+        table: &mut PollTable,
     ) -> Result<u32> {
-        Err(EINVAL)
+        let thread = this.get_thread(kernel::current!().pid())?;
+        let (from_proc, mut mask) = thread.poll(file, table);
+        if mask == 0 && from_proc && !this.inner.lock().work.is_empty() {
+            mask |= bindings::POLLIN;
+        }
+        Ok(mask)
     }
 }
 
