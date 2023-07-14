@@ -21,8 +21,13 @@ use kernel::{
 };
 
 use crate::{
-    allocation::Allocation, defs::*, error::BinderResult, process::Process, ptr_align,
-    transaction::Transaction, DArc, DLArc, DTRWrap, DeliverCode, DeliverToRead,
+    allocation::{Allocation, AllocationView, BinderObject, BinderObjectRef},
+    defs::*,
+    error::BinderResult,
+    process::Process,
+    ptr_align,
+    transaction::Transaction,
+    DArc, DLArc, DTRWrap, DeliverCode, DeliverToRead,
 };
 
 use core::{
@@ -412,6 +417,54 @@ impl Thread {
         self.inner.lock().push_return_work(reply);
     }
 
+    fn translate_object(
+        &self,
+        offset: usize,
+        object: BinderObjectRef<'_>,
+        view: &mut AllocationView<'_>,
+    ) -> BinderResult {
+        match object {
+            BinderObjectRef::Binder(obj) => {
+                let strong = obj.hdr.type_ == BINDER_TYPE_BINDER;
+                // SAFETY: `binder` is a `binder_uintptr_t`; any bit pattern is a valid
+                // representation.
+                let ptr = unsafe { obj.__bindgen_anon_1.binder } as _;
+                let cookie = obj.cookie as _;
+                let flags = obj.flags as _;
+                let node = self.process.as_arc_borrow().get_node(
+                    ptr,
+                    cookie,
+                    flags,
+                    strong,
+                    Some(self),
+                )?;
+                security::binder_transfer_binder(&self.process.cred, &view.alloc.process.cred)?;
+                view.transfer_binder_object(offset, obj, strong, node)?;
+            }
+            BinderObjectRef::Handle(obj) => {
+                let strong = obj.hdr.type_ == BINDER_TYPE_HANDLE;
+                // SAFETY: `handle` is a `u32`; any bit pattern is a valid representation.
+                let handle = unsafe { obj.__bindgen_anon_1.handle } as _;
+                let node = self.process.get_node_from_handle(handle, strong)?;
+                security::binder_transfer_binder(&self.process.cred, &view.alloc.process.cred)?;
+                view.transfer_binder_object(offset, obj, strong, node)?;
+            }
+            BinderObjectRef::Fd(_obj) => {
+                pr_warn!("Using unsupported binder object type fd.");
+                return Err(EINVAL.into());
+            }
+            BinderObjectRef::Ptr(_obj) => {
+                pr_warn!("Using unsupported binder object type ptr.");
+                return Err(EINVAL.into());
+            }
+            BinderObjectRef::Fda(_obj) => {
+                pr_warn!("Using unsupported binder object type fda.");
+                return Err(EINVAL.into());
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn copy_transaction_data(
         &self,
         to_process: Arc<Process>,
@@ -436,6 +489,8 @@ impl Thread {
 
         let data_size = trd.data_size.try_into().map_err(|_| EINVAL)?;
         let adata_size = ptr_align(data_size);
+        let offsets_size = trd.offsets_size.try_into().map_err(|_| EINVAL)?;
+        let aoffsets_size = ptr_align(offsets_size);
         let asecctx_size = secctx
             .as_ref()
             .map(|(_, ctx)| ptr_align(ctx.len()))
@@ -443,11 +498,14 @@ impl Thread {
 
         // This guarantees that at least `sizeof(usize)` bytes will be allocated.
         let len = usize::max(
-            adata_size.checked_add(asecctx_size).ok_or(ENOMEM)?,
+            adata_size
+                .checked_add(aoffsets_size)
+                .and_then(|sum| sum.checked_add(asecctx_size))
+                .ok_or(ENOMEM)?,
             size_of::<usize>(),
         );
-        let secctx_off = adata_size;
-        let alloc = match to_process.buffer_alloc(len, is_oneway) {
+        let secctx_off = adata_size + aoffsets_size;
+        let mut alloc = match to_process.buffer_alloc(len, is_oneway) {
             Ok(alloc) => alloc,
             Err(err) => {
                 pr_warn!(
@@ -461,8 +519,56 @@ impl Thread {
 
         let mut buffer_reader =
             unsafe { UserSlicePtr::new(trd.data.ptr.buffer as _, data_size) }.reader();
+        let mut end_of_previous_object = 0;
 
-        alloc.copy_into(&mut buffer_reader, 0, data_size)?;
+        // Copy offsets if there are any.
+        if offsets_size > 0 {
+            {
+                let mut reader =
+                    unsafe { UserSlicePtr::new(trd.data.ptr.offsets as _, offsets_size) }.reader();
+                alloc.copy_into(&mut reader, adata_size, offsets_size)?;
+            }
+
+            let offsets_start = adata_size;
+            let offsets_end = adata_size + aoffsets_size;
+
+            // Traverse the objects specified.
+            let mut view = AllocationView::new(&mut alloc, data_size);
+            for index_offset in (offsets_start..offsets_end).step_by(size_of::<usize>()) {
+                let offset = view.alloc.read(index_offset)?;
+
+                // Copy data between two objects.
+                if end_of_previous_object < offset {
+                    view.alloc.copy_into(
+                        &mut buffer_reader,
+                        end_of_previous_object,
+                        offset - end_of_previous_object,
+                    )?;
+                }
+
+                let mut object = BinderObject::read_from(&mut buffer_reader)?;
+
+                match self.translate_object(offset, object.as_ref(), &mut view) {
+                    Ok(()) => end_of_previous_object = offset + object.size(),
+                    Err(err) => {
+                        pr_warn!("Error while translating object.");
+                        return Err(err);
+                    }
+                }
+
+                // Update the indexes containing objects to clean up.
+                let offset_after_object = index_offset + size_of::<usize>();
+                view.alloc
+                    .set_info_offsets(offsets_start..offset_after_object);
+            }
+        }
+
+        // Copy remaining raw data.
+        alloc.copy_into(
+            &mut buffer_reader,
+            end_of_previous_object,
+            data_size - end_of_previous_object,
+        )?;
 
         if let Some((off_out, secctx)) = secctx.as_mut() {
             if let Err(err) = alloc.write(secctx_off, secctx.as_bytes()) {
