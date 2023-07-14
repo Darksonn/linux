@@ -32,6 +32,7 @@ pub(crate) struct Transaction {
     code: u32,
     pub(crate) flags: u32,
     data_size: usize,
+    offsets_size: usize,
     data_address: usize,
     sender_euid: Kuid,
     txn_security_ctx_off: Option<usize>,
@@ -85,6 +86,7 @@ impl Transaction {
             code: trd.code,
             flags: trd.flags,
             data_size: trd.data_size as _,
+            offsets_size: trd.offsets_size as _,
             data_address,
             allocation <- kernel::new_spinlock!(Some(alloc), "Transaction::new"),
             txn_security_ctx_off,
@@ -116,6 +118,7 @@ impl Transaction {
             code: trd.code,
             flags: trd.flags,
             data_size: trd.data_size as _,
+            offsets_size: trd.offsets_size as _,
             data_address: alloc.ptr,
             allocation <- kernel::new_spinlock!(Some(alloc), "Transaction::new"),
             txn_security_ctx_off: None,
@@ -229,7 +232,7 @@ impl DeliverToRead for Transaction {
         tr.flags = self.flags;
         tr.data_size = self.data_size as _;
         tr.data.ptr.buffer = self.data_address as _;
-        tr.offsets_size = 0;
+        tr.offsets_size = self.offsets_size as _;
         if tr.offsets_size > 0 {
             tr.data.ptr.offsets = (self.data_address + ptr_align(self.data_size)) as _;
         }
