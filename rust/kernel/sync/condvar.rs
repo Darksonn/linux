@@ -143,7 +143,7 @@ impl CondVar {
     }
 
     /// Calls the kernel function to notify the appropriate number of threads with the given flags.
-    fn notify(&self, count: i32, flags: u32) {
+    pub(crate) fn notify(&self, count: i32, flags: u32) {
         // SAFETY: `wait_list` points to valid memory.
         unsafe {
             bindings::__wake_up(

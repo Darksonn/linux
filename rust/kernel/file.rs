@@ -13,6 +13,9 @@ use crate::{
 };
 use core::{marker::PhantomData, ptr};
 
+mod poll_table;
+pub use self::poll_table::{PollCondVar, PollTable};
+
 /// Flags associated with a [`File`].
 pub mod flags {
     /// File is opened in append mode.
