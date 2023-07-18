@@ -107,7 +107,7 @@ pub mod flags {
 /// Instances of this type are always ref-counted, that is, a call to `get_file` ensures that the
 /// allocation remains valid at least until the matching call to `fput`.
 #[repr(transparent)]
-pub struct File(Opaque<bindings::file>);
+pub struct File(pub(crate) Opaque<bindings::file>);
 
 // SAFETY: By design, the only way to access a `File` is via an immutable reference or an `ARef`.
 // This means that the only situation in which a `File` can be accessed mutably is when the
