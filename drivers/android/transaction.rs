@@ -38,6 +38,7 @@ pub(crate) struct Transaction {
     data_address: usize,
     sender_euid: Kuid,
     txn_security_ctx_off: Option<usize>,
+    pub(crate) oneway_spam_detected: bool,
 }
 
 kernel::list::impl_list_arc_safe! {
@@ -70,6 +71,7 @@ impl Transaction {
                 return Err(err);
             }
         };
+        let oneway_spam_detected = alloc.oneway_spam_detected;
         if trd.flags & TF_ONE_WAY != 0 {
             if stack_next.is_some() {
                 pr_warn!("Oneway transaction should not be in a transaction stack.");
@@ -98,6 +100,7 @@ impl Transaction {
             allocation <- kernel::new_spinlock!(Some(alloc), "Transaction::new"),
             is_outstanding: AtomicBool::new(false),
             txn_security_ctx_off,
+            oneway_spam_detected,
         }))?)
     }
 
@@ -115,6 +118,7 @@ impl Transaction {
                 return Err(err);
             }
         };
+        let oneway_spam_detected = alloc.oneway_spam_detected;
         if trd.flags & TF_CLEAR_BUF != 0 {
             alloc.set_info_clear_on_drop();
         }
@@ -132,6 +136,7 @@ impl Transaction {
             allocation <- kernel::new_spinlock!(Some(alloc), "Transaction::new"),
             is_outstanding: AtomicBool::new(false),
             txn_security_ctx_off: None,
+            oneway_spam_detected,
         }))?)
     }
 
