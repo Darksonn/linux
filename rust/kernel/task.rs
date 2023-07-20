@@ -133,6 +133,12 @@ impl Task {
         }
     }
 
+    /// Returns a raw pointer to the task.
+    #[inline]
+    pub fn as_raw(&self) -> *mut bindings::task_struct {
+        self.0.get()
+    }
+
     /// Returns the group leader of the given task.
     pub fn group_leader(&self) -> &Task {
         // SAFETY: By the type invariant, we know that `self.0` is a valid task. Valid tasks always
@@ -178,6 +184,14 @@ impl Task {
         // SAFETY: We know that `self.0.get()` is valid by the type invariant, and the namespace
         // pointer is not dangling since it points at this task's namespace.
         unsafe { bindings::task_tgid_nr_ns(self.0.get(), namespace) }
+    }
+
+    /// Returns whether this task corresponds to a kernel thread.
+    pub fn is_kthread(&self) -> bool {
+        // SAFETY: By the type invariant, we know that `self.0.get()` is non-null and valid. There
+        // are no further requirements to read the task's flags.
+        let flags = unsafe { (*self.0.get()).flags };
+        (flags & bindings::PF_KTHREAD) != 0
     }
 
     /// Wakes up the task.
