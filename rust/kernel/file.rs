@@ -11,7 +11,8 @@ use crate::{
     error::{code::*, Error, Result},
     types::{ARef, AlwaysRefCounted, Opaque},
 };
-use core::{marker::PhantomData, ptr};
+use alloc::boxed::Box;
+use core::{alloc::AllocError, marker::PhantomData, mem, ptr};
 
 mod poll_table;
 pub use self::poll_table::{PollCondVar, PollTable};
@@ -238,6 +239,83 @@ impl Drop for FileDescriptorReservation {
     fn drop(&mut self) {
         // SAFETY: `self.fd` was returned by a previous call to `get_unused_fd_flags`.
         unsafe { bindings::put_unused_fd(self.fd) };
+    }
+}
+
+/// Helper used for closing file descriptors in a way that is safe even if the file is currently
+/// held using `fdget`.
+///
+/// See comments on `binder_do_fd_close` and commit `80cd795630d65`.
+pub struct DeferredFdCloser {
+    inner: Box<DeferredFdCloserInner>,
+}
+
+/// SAFETY: This just holds an allocation with no real content, so there's no safety issue with
+/// moving it across threads.
+unsafe impl Send for DeferredFdCloser {}
+unsafe impl Sync for DeferredFdCloser {}
+
+#[repr(C)]
+struct DeferredFdCloserInner {
+    twork: mem::MaybeUninit<bindings::callback_head>,
+    file: *mut bindings::file,
+}
+
+impl DeferredFdCloser {
+    /// Create a new `DeferredFdCloser`.
+    pub fn new() -> Result<Self, AllocError> {
+        Ok(Self {
+            inner: Box::try_new(DeferredFdCloserInner {
+                twork: mem::MaybeUninit::uninit(),
+                file: core::ptr::null_mut(),
+            })?,
+        })
+    }
+
+    /// Schedule a task work that closes the file descriptor when this task returns to userspace.
+    pub fn close_fd(mut self, fd: u32) {
+        let file = unsafe { bindings::close_fd_get_file(fd) };
+        if !file.is_null() {
+            self.inner.file = file;
+
+            // SAFETY: Since DeferredFdCloserInner is `#[repr(C)]`, casting the pointers gives a
+            // pointer to the `twork` field.
+            let inner = Box::into_raw(self.inner) as *mut bindings::callback_head;
+
+            // SAFETY: Getting a pointer to current is always safe.
+            let current = unsafe { bindings::get_current() };
+            // SAFETY: The `file` pointer points at a valid file.
+            unsafe { bindings::get_file(file) };
+            // SAFETY: Due to the above `get_file`, even if the current task holds an `fdget` to
+            // this file right now, the refcount will not drop to zero until after it is released
+            // with `fdput`. This is because when using `fdget`, you must always use `fdput` before
+            // returning to userspace, and our task work runs after any `fdget` users have returned
+            // to user space.
+            //
+            // Note: fl_owner_t is currently a void pointer.
+            unsafe { bindings::filp_close(file, (*current).files as bindings::fl_owner_t) };
+            // SAFETY: The `inner` pointer is compatible with the `do_close_fd` method.
+            //
+            // The call to `task_work_add` can't fail, because we are scheduling the task work to
+            // the current task.
+            unsafe {
+                bindings::init_task_work(inner, Some(Self::do_close_fd));
+                bindings::task_work_add(current, inner, bindings::task_work_notify_mode_TWA_RESUME);
+            }
+        } else {
+            // Free the allocation.
+            drop(self.inner);
+        }
+    }
+
+    unsafe extern "C" fn do_close_fd(inner: *mut bindings::callback_head) {
+        // SAFETY: In `close_fd` we use this method together with a pointer that originates from a
+        // `Box<DeferredFdCloserInner>`, and we have just been given ownership of that allocation.
+        let inner = unsafe { Box::from_raw(inner as *mut DeferredFdCloserInner) };
+        // SAFETY: This drops a refcount we acquired in `close_fd`.
+        unsafe { bindings::fput(inner.file) };
+        // Free the allocation.
+        drop(inner);
     }
 }
 

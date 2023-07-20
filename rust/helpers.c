@@ -32,6 +32,7 @@
 #include <linux/sched/signal.h>
 #include <linux/security.h>
 #include <linux/spinlock.h>
+#include <linux/task_work.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 
@@ -185,6 +186,13 @@ void rust_helper_security_cred_getsecid(const struct cred *c, u32 *secid)
 }
 EXPORT_SYMBOL_GPL(rust_helper_security_cred_getsecid);
 #endif
+
+void rust_helper_init_task_work(struct callback_head *twork,
+				task_work_func_t func)
+{
+	init_task_work(twork, func);
+}
+EXPORT_SYMBOL_GPL(rust_helper_init_task_work);
 
 /*
  * `bindgen` binds the C `size_t` type as the Rust `usize` type, so we can
