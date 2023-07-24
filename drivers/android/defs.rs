@@ -58,7 +58,13 @@ pub_no_prefix!(
 pub(crate) const FLAT_BINDER_FLAG_ACCEPTS_FDS: u32 = kernel::bindings::FLAT_BINDER_FLAG_ACCEPTS_FDS;
 pub(crate) const FLAT_BINDER_FLAG_TXN_SECURITY_CTX: u32 =
     kernel::bindings::FLAT_BINDER_FLAG_TXN_SECURITY_CTX;
-pub_no_prefix!(transaction_flags_, TF_ONE_WAY, TF_ACCEPT_FDS, TF_CLEAR_BUF);
+pub_no_prefix!(
+    transaction_flags_,
+    TF_ONE_WAY,
+    TF_ACCEPT_FDS,
+    TF_CLEAR_BUF,
+    TF_UPDATE_TXN
+);
 
 pub(crate) use bindings::{
     BINDER_TYPE_BINDER, BINDER_TYPE_FD, BINDER_TYPE_FDA, BINDER_TYPE_HANDLE, BINDER_TYPE_PTR,
