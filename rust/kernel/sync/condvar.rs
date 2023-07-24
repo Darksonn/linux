@@ -191,6 +191,16 @@ impl CondVar {
         crate::current!().signal_pending()
     }
 
+    /// Releases the lock and waits for a notification in interruptible and freezable mode.
+    #[must_use = "wait returns if a signal is pending, so the caller must check the return value"]
+    pub fn wait_freezable<T: ?Sized, B: Backend>(&self, guard: &mut Guard<'_, T, B>) -> bool {
+        self.wait_internal(
+            bindings::TASK_INTERRUPTIBLE | bindings::TASK_FREEZABLE,
+            guard,
+        );
+        crate::current!().signal_pending()
+    }
+
     /// Releases the lock and waits for a notification in uninterruptible mode.
     ///
     /// Similar to [`CondVar::wait`], except that the wait is not interruptible. That is, the

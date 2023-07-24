@@ -20,7 +20,9 @@ use kernel::{
     pages::Pages,
     prelude::*,
     rbtree::RBTree,
-    sync::{lock::Guard, Arc, ArcBorrow, Mutex, SpinLock, UniqueArc},
+    sync::{
+        lock::Guard, Arc, ArcBorrow, CondVar, CondVarTimeoutResult, Mutex, SpinLock, UniqueArc,
+    },
     task::Task,
     types::{ARef, Either},
     user_ptr::{UserSlicePtr, UserSlicePtrReader},
@@ -80,6 +82,16 @@ pub(crate) struct ProcessInner {
 
     /// Bitmap of deferred work to do.
     defer_work: u8,
+
+    /// Number of transactions to be transmitted before processes in freeze_wait
+    /// are woken up.
+    outstanding_txns: u32,
+    /// Process is frozen and unable to service binder transactions.
+    pub(crate) is_frozen: bool,
+    /// Process received sync transactions since last frozen.
+    pub(crate) sync_recv: bool,
+    /// Process received async transactions since last frozen.
+    pub(crate) async_recv: bool,
 }
 
 impl ProcessInner {
@@ -97,6 +109,10 @@ impl ProcessInner {
             max_threads: 0,
             started_thread_count: 0,
             defer_work: 0,
+            outstanding_txns: 0,
+            is_frozen: false,
+            sync_recv: false,
+            async_recv: false,
         }
     }
 
@@ -248,6 +264,22 @@ impl ProcessInner {
             pr_warn!("Notification added to `delivered_deaths` twice.");
         }
     }
+
+    pub(crate) fn add_outstanding_txn(&mut self) {
+        self.outstanding_txns += 1;
+    }
+
+    fn txns_pending_locked(&self) -> bool {
+        if self.outstanding_txns > 0 {
+            return true;
+        }
+        for thread in self.threads.values() {
+            if thread.has_current_transaction() {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 struct NodeRefInfo {
@@ -295,6 +327,11 @@ pub(crate) struct Process {
 
     #[pin]
     pub(crate) inner: SpinLock<ProcessInner>,
+
+    // Waitqueue of processes waiting for all outstanding transactions to be
+    // processed.
+    #[pin]
+    freeze_wait: CondVar,
 
     // Node references are in a different lock to avoid recursive acquisition when
     // incrementing/decrementing a node in another process.
@@ -353,6 +390,7 @@ impl Process {
             cred,
             inner <- kernel::new_spinlock!(ProcessInner::new(), "Process::inner"),
             node_refs <- kernel::new_mutex!(ProcessNodeRefs::new(), "Process::node_refs"),
+            freeze_wait <- kernel::new_condvar!("Process::freeze_wait"),
             task: kernel::current!().group_leader().into(),
             defer_work <- kernel::new_work!("Process::defer_work"),
             links <- ListLinks::new(),
@@ -878,6 +916,9 @@ impl Process {
         let is_manager = {
             let mut inner = self.inner.lock();
             inner.is_dead = true;
+            inner.is_frozen = false;
+            inner.sync_recv = false;
+            inner.async_recv = false;
             inner.is_manager
         };
 
@@ -975,6 +1016,116 @@ impl Process {
         }
         Ok(())
     }
+
+    pub(crate) fn drop_outstanding_txn(&self) {
+        let wake = {
+            let mut inner = self.inner.lock();
+            if inner.outstanding_txns == 0 {
+                pr_err!("outstanding_txns underflow");
+                return;
+            }
+            inner.outstanding_txns -= 1;
+            inner.is_frozen && inner.outstanding_txns == 0
+        };
+
+        if wake {
+            self.freeze_wait.notify_all();
+        }
+    }
+
+    pub(crate) fn ioctl_freeze(&self, info: &BinderFreezeInfo) -> Result {
+        if info.enable != 0 {
+            let mut inner = self.inner.lock();
+            inner.sync_recv = false;
+            inner.async_recv = false;
+            inner.is_frozen = false;
+            return Ok(());
+        }
+
+        let mut inner = self.inner.lock();
+        inner.sync_recv = false;
+        inner.async_recv = false;
+        inner.is_frozen = true;
+
+        if info.timeout_ms > 0 {
+            // Safety: Just an FFI call.
+            let mut jiffies = unsafe { bindings::__msecs_to_jiffies(info.timeout_ms) };
+            while jiffies > 0 {
+                if inner.outstanding_txns == 0 {
+                    break;
+                }
+
+                match self.freeze_wait.wait_timeout(&mut inner, jiffies) {
+                    CondVarTimeoutResult::Signal { .. } => {
+                        inner.is_frozen = false;
+                        return Err(ERESTARTSYS);
+                    }
+                    CondVarTimeoutResult::Woken { jiffies: remaining } => {
+                        jiffies = remaining;
+                    }
+                    CondVarTimeoutResult::Timeout => {
+                        jiffies = 0;
+                    }
+                }
+            }
+        }
+
+        if inner.txns_pending_locked() {
+            inner.is_frozen = false;
+            Err(EAGAIN)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn get_frozen_status(data: UserSlicePtr) -> Result {
+    let (mut reader, mut writer) = data.reader_writer();
+
+    let mut info = reader.read::<BinderFrozenStatusInfo>()?;
+    info.sync_recv = 0;
+    info.async_recv = 0;
+    let mut found = false;
+
+    for ctx in crate::context::get_all_contexts()? {
+        ctx.for_each_proc(|proc| {
+            if proc.task.pid() == info.pid as _ {
+                found = true;
+                let inner = proc.inner.lock();
+                let txns_pending = inner.txns_pending_locked();
+                info.async_recv |= inner.async_recv as u32;
+                info.sync_recv |= inner.sync_recv as u32;
+                info.sync_recv |= (txns_pending as u32) << 1;
+            }
+        });
+    }
+
+    if found {
+        writer.write(&info)?;
+        Ok(())
+    } else {
+        Err(EINVAL)
+    }
+}
+
+fn ioctl_freeze(reader: &mut UserSlicePtrReader) -> Result {
+    let info = reader.read::<BinderFreezeInfo>()?;
+
+    // Very unlikely for there to be more than 3, since a process normally uses at most binder and
+    // hwbinder.
+    let mut procs = Vec::try_with_capacity(3)?;
+
+    let ctxs = crate::context::get_all_contexts()?;
+    for ctx in ctxs {
+        for proc in ctx.get_procs_with_pid(info.pid as i32)? {
+            procs.try_push(proc)?;
+        }
+    }
+
+    for proc in procs {
+        proc.ioctl_freeze(&info)?;
+    }
+    Ok(())
 }
 
 /// The ioctl handler.
@@ -993,6 +1144,7 @@ impl Process {
             bindings::BINDER_SET_CONTEXT_MGR_EXT => {
                 this.set_as_manager(Some(reader.read()?), &thread)?
             }
+            bindings::BINDER_FREEZE => ioctl_freeze(reader)?,
             _ => return Err(EINVAL),
         }
         Ok(0)
@@ -1011,6 +1163,7 @@ impl Process {
             bindings::BINDER_GET_NODE_DEBUG_INFO => this.get_node_debug_info(data)?,
             bindings::BINDER_GET_NODE_INFO_FOR_REF => this.get_node_info_from_ref(data)?,
             bindings::BINDER_VERSION => this.version(data)?,
+            bindings::BINDER_GET_FROZEN_INFO => get_frozen_status(data)?,
             bindings::BINDER_GET_EXTENDED_ERROR => thread.get_extended_error(data)?,
             _ => return Err(EINVAL),
         }
