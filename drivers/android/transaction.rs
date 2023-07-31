@@ -5,6 +5,8 @@ use kernel::{
     io_buffer::IoBufferWriter,
     list::ListArcSafe,
     prelude::*,
+    seq_file::SeqFile,
+    seq_print,
     sync::{Arc, SpinLock},
     task::Kuid,
     types::{Either, ScopeGuard},
@@ -138,6 +140,29 @@ impl Transaction {
             txn_security_ctx_off: None,
             oneway_spam_detected,
         }))?)
+    }
+
+    #[inline(never)]
+    pub(crate) fn debug_print(&self, m: &mut SeqFile) {
+        let from_pid = self.from.process.task.pid_in_current_ns();
+        let to_pid = self.to.task.pid_in_current_ns();
+        let from_tid = self.from.id;
+        match self.target_node.as_ref() {
+            Some(target_node) => {
+                let node_id = target_node.global_id;
+                seq_print!(
+                    m,
+                    "{}(tid:{})->{}(nid:{})",
+                    from_pid,
+                    from_tid,
+                    to_pid,
+                    node_id
+                );
+            }
+            None => {
+                seq_print!(m, "{}(tid:{})->{}(nid:_)", from_pid, from_tid, to_pid);
+            }
+        }
     }
 
     /// Determines if the transaction is stacked on top of the given transaction.
