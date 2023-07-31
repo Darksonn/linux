@@ -20,6 +20,8 @@ use kernel::{
     pages::Pages,
     prelude::*,
     rbtree::RBTree,
+    seq_file::SeqFile,
+    seq_print,
     sync::{
         lock::Guard, Arc, ArcBorrow, CondVar, CondVarTimeoutResult, Mutex, SpinLock, UniqueArc,
     },
@@ -403,6 +405,79 @@ impl Process {
         process.ctx.register_process(list_process);
 
         Ok(process)
+    }
+
+    #[inline(never)]
+    pub(crate) fn debug_print(&self, m: &mut SeqFile) -> Result<()> {
+        seq_print!(m, "pid: {}\n", self.task.pid_in_current_ns());
+
+        let is_manager;
+        let started_threads;
+        let has_proc_work;
+        let mut ready_threads = Vec::new();
+        let mut all_threads = Vec::new();
+        let mut all_nodes = Vec::new();
+        loop {
+            let inner = self.inner.lock();
+            let ready_threads_len = inner.ready_threads.iter().count();
+            let all_threads_len = inner.threads.values().count();
+            let all_nodes_len = inner.nodes.values().count();
+
+            let resize_ready_threads = ready_threads_len > ready_threads.capacity();
+            let resize_all_threads = all_threads_len > all_threads.capacity();
+            let resize_all_nodes = all_nodes_len > all_nodes.capacity();
+            if resize_ready_threads || resize_all_threads || resize_all_nodes {
+                drop(inner);
+                ready_threads.try_reserve(ready_threads_len)?;
+                all_threads.try_reserve(all_threads_len)?;
+                all_nodes.try_reserve(all_nodes_len)?;
+                continue;
+            }
+
+            is_manager = inner.is_manager;
+            started_threads = inner.started_thread_count;
+            has_proc_work = !inner.work.is_empty();
+
+            for thread in &inner.ready_threads {
+                assert!(ready_threads.len() < ready_threads.capacity());
+                ready_threads.try_push(thread.id)?;
+            }
+
+            for thread in inner.threads.values() {
+                assert!(all_threads.len() < all_threads.capacity());
+                all_threads.try_push(thread.clone())?;
+            }
+
+            for node in inner.nodes.values() {
+                assert!(all_nodes.len() < all_nodes.capacity());
+                all_nodes.try_push(node.clone())?;
+            }
+
+            break;
+        }
+
+        seq_print!(m, "is_manager: {}\n", is_manager);
+        seq_print!(m, "started_threads: {}\n", started_threads);
+        seq_print!(m, "has_proc_work: {}\n", has_proc_work);
+        if ready_threads.is_empty() {
+            seq_print!(m, "ready_thread_ids: none\n");
+        } else {
+            seq_print!(m, "ready_thread_ids:");
+            for thread_id in ready_threads {
+                seq_print!(m, " {}", thread_id);
+            }
+            seq_print!(m, "\n");
+        }
+
+        for node in all_nodes {
+            node.debug_print(m)?;
+        }
+
+        seq_print!(m, "all threads:\n");
+        for thread in all_threads {
+            thread.debug_print(m);
+        }
+        Ok(())
     }
 
     /// Attempts to fetch a work item from the process queue.
