@@ -7,6 +7,8 @@ use kernel::{
         TryNewListArc,
     },
     prelude::*,
+    seq_file::SeqFile,
+    seq_print,
     sync::lock::{spinlock::SpinLockBackend, Guard},
     sync::{Arc, LockedBy, SpinLock},
     user_ptr::UserSlicePtrWriter,
@@ -109,6 +111,41 @@ impl Node {
             owner,
             links_track <- AtomicListArcTracker::new(),
         })
+    }
+
+    #[inline(never)]
+    pub(crate) fn debug_print(&self, m: &mut SeqFile) -> Result<()> {
+        let weak;
+        let strong;
+        let has_weak;
+        let has_strong;
+        let active_inc_refs;
+        {
+            let mut guard = self.owner.inner.lock();
+            let inner = self.inner.access_mut(&mut guard);
+            weak = inner.weak.count;
+            has_weak = inner.weak.has_count;
+            strong = inner.strong.count;
+            has_strong = inner.strong.has_count;
+            active_inc_refs = inner.active_inc_refs;
+        }
+
+        let has_weak = if has_weak { "Y" } else { "N" };
+        let has_strong = if has_strong { "Y" } else { "N" };
+
+        seq_print!(
+            m,
+            "node gid:{},ptr:{:#x},cookie:{:#x}: strong{}{} weak{}{} active{}\n",
+            self.global_id,
+            self.ptr,
+            self.cookie,
+            strong,
+            has_strong,
+            weak,
+            has_weak,
+            active_inc_refs
+        );
+        Ok(())
     }
 
     pub(crate) fn get_id(&self) -> (usize, usize) {

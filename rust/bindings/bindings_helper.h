@@ -15,6 +15,7 @@
 #include <linux/pid_namespace.h>
 #include <linux/poll.h>
 #include <linux/security.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/refcount.h>
 #include <linux/rust_binder.h>
