@@ -93,6 +93,12 @@ void rust_helper_spin_unlock(spinlock_t *lock)
 }
 EXPORT_SYMBOL_GPL(rust_helper_spin_unlock);
 
+int rust_helper_spin_trylock(spinlock_t *lock)
+{
+	return spin_trylock(lock);
+}
+EXPORT_SYMBOL_GPL(rust_helper_spin_trylock);
+
 void rust_helper_init_wait(struct wait_queue_entry *wq_entry)
 {
 	init_wait(wq_entry);
@@ -309,6 +315,20 @@ struct vm_area_struct *rust_helper_vma_lookup(struct mm_struct *mm,
 	return vma_lookup(mm, addr);
 }
 EXPORT_SYMBOL_GPL(rust_helper_vma_lookup);
+
+unsigned long rust_helper_list_lru_count(struct list_lru *lru)
+{
+	return list_lru_count(lru);
+}
+EXPORT_SYMBOL_GPL(rust_helper_list_lru_count);
+
+unsigned long rust_helper_list_lru_walk(struct list_lru *lru,
+					list_lru_walk_cb isolate, void *cb_arg,
+					unsigned long nr_to_walk)
+{
+	return list_lru_walk(lru, isolate, cb_arg, nr_to_walk);
+}
+EXPORT_SYMBOL_GPL(rust_helper_list_lru_walk);
 
 void rust_helper_rb_link_node(struct rb_node *node, struct rb_node *parent,
 			      struct rb_node **rb_link)
