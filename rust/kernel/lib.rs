@@ -43,6 +43,7 @@ pub mod ioctl;
 pub mod kunit;
 pub mod list;
 pub mod mm;
+pub mod page_range;
 pub mod pages;
 pub mod prelude;
 pub mod print;
