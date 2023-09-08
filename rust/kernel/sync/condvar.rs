@@ -155,6 +155,16 @@ impl CondVar {
         };
     }
 
+    /// Calls the kernel function to notify one thread synchronously.
+    ///
+    /// This method behaves like `notify_one`, except that it hints to the scheduler that the
+    /// current thread is about to go to sleep, so it should schedule the target thread on the same
+    /// CPU.
+    pub fn notify_sync(&self) {
+        // SAFETY: `wait_list` points to valid memory.
+        unsafe { bindings::__wake_up_sync(self.wait_list.get(), bindings::TASK_NORMAL) };
+    }
+
     /// Wakes a single waiter up, if any.
     ///
     /// This is not 'sticky' in the sense that if no thread is waiting, the notification is lost
