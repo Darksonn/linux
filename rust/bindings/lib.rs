@@ -57,3 +57,73 @@ pub const POLLFREE: __poll_t = BINDINGS_POLLFREE;
 pub const PAGE_SHIFT: usize = bindings_raw::PAGE_SHIFT as usize;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
+
+pub use self::refcount_t_impl::{refcount_dec_and_test, refcount_inc, REFCOUNT_INIT};
+mod refcount_t_impl {
+    use super::bindings_raw::*;
+    use core::ffi::c_int;
+    use core::sync::atomic::{self, Ordering};
+
+    // Use a trait to pick the right atomic type for c_int.
+    trait HasAtomic {
+        type AtomicInt;
+    }
+    impl HasAtomic for i16 {
+        type AtomicInt = atomic::AtomicI16;
+    }
+    impl HasAtomic for i32 {
+        type AtomicInt = atomic::AtomicI32;
+    }
+    impl HasAtomic for i64 {
+        type AtomicInt = atomic::AtomicI64;
+    }
+    impl HasAtomic for isize {
+        type AtomicInt = atomic::AtomicIsize;
+    }
+
+    type AtomicCInt = <c_int as HasAtomic>::AtomicInt;
+
+    #[inline(always)]
+    pub unsafe fn REFCOUNT_INIT(n: c_int) -> refcount_t {
+        refcount_t {
+            refs: atomic_t { counter: n },
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn refcount_inc(r: *mut refcount_t) {
+        let atomic = unsafe { &*r.cast::<AtomicCInt>() };
+        let old = atomic.fetch_add(1, Ordering::Relaxed);
+
+        if old == 0 {
+            warn_saturate(r, refcount_saturation_type_REFCOUNT_ADD_UAF);
+        } else if old.wrapping_add(1) <= 0 {
+            warn_saturate(r, refcount_saturation_type_REFCOUNT_ADD_OVF);
+        }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub unsafe fn refcount_dec_and_test(r: *mut refcount_t) -> bool {
+        let atomic = unsafe { &*r.cast::<AtomicCInt>() };
+        let old = atomic.fetch_sub(1, Ordering::Release);
+
+        if old == 1 {
+            atomic::fence(Ordering::Acquire);
+            return true;
+        }
+
+        if old <= 0 {
+            warn_saturate(r, refcount_saturation_type_REFCOUNT_SUB_UAF);
+        }
+
+        false
+    }
+
+    #[cold]
+    fn warn_saturate(r: *mut refcount_t, t: refcount_saturation_type) {
+        unsafe {
+            refcount_warn_saturate(r, t);
+        }
+    }
+}
