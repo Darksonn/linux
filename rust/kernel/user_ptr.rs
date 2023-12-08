@@ -11,6 +11,7 @@
 use crate::{bindings, error::code::*, error::Result};
 use alloc::vec::Vec;
 use core::ffi::{c_ulong, c_void};
+use core::mem::{size_of, MaybeUninit};
 
 /// The maximum length of a operation using `copy_[from|to]_user`.
 ///
@@ -151,6 +152,36 @@ impl UserSlicePtrReader {
         Ok(())
     }
 
+    /// Reads a value of the specified type.
+    ///
+    /// Fails with `EFAULT` if the read encounters a page fault.
+    pub fn read<T: ReadableFromBytes>(&mut self) -> Result<T> {
+        if size_of::<T>() > self.1 || size_of::<T>() > MAX_USER_OP_LEN {
+            return Err(EFAULT);
+        }
+        let mut out: MaybeUninit<T> = MaybeUninit::uninit();
+        // SAFETY: The local variable `out` is valid for writing `size_of::<T>()` bytes.
+        let res = unsafe {
+            bindings::copy_from_user_unsafe_skip_check_object_size(
+                out.as_mut_ptr().cast::<c_void>(),
+                self.0,
+                size_of::<T>() as c_ulong,
+            )
+        };
+        if res != 0 {
+            return Err(EFAULT);
+        }
+        // Since this is not a pointer to a valid object in our program,
+        // we cannot use `add`, which has C-style rules for defined
+        // behavior.
+        self.0 = self.0.wrapping_add(size_of::<T>());
+        self.1 -= size_of::<T>();
+        // SAFETY: The read above has initialized all bytes in `out`, and since
+        // `T` implements `ReadableFromBytes`, any bit-pattern is a valid value
+        // for this type.
+        Ok(unsafe { out.assume_init() })
+    }
+
     /// Reads all remaining data in the buffer into a vector.
     ///
     /// Fails with `EFAULT` if the read encounters a page fault.
@@ -219,4 +250,98 @@ impl UserSlicePtrWriter {
         // `len`, so the pointer is valid for reading `len` bytes.
         unsafe { self.write_raw(ptr, len) }
     }
+
+    /// Writes the provided Rust value to this userspace pointer.
+    ///
+    /// Fails with `EFAULT` if the write encounters a page fault.
+    pub fn write<T: WritableToBytes>(&mut self, value: &T) -> Result {
+        if size_of::<T>() > self.1 || size_of::<T>() > MAX_USER_OP_LEN {
+            return Err(EFAULT);
+        }
+        // SAFETY: The reference points to a value of type `T`, so it is valid
+        // for reading `size_of::<T>()` bytes.
+        let res = unsafe {
+            bindings::copy_to_user_unsafe_skip_check_object_size(
+                self.0,
+                (value as *const T).cast::<c_void>(),
+                size_of::<T>() as c_ulong,
+            )
+        };
+        if res != 0 {
+            return Err(EFAULT);
+        }
+        // Since this is not a pointer to a valid object in our program,
+        // we cannot use `add`, which has C-style rules for defined
+        // behavior.
+        self.0 = self.0.wrapping_add(size_of::<T>());
+        self.1 -= size_of::<T>();
+        Ok(())
+    }
 }
+
+/// Specifies that a type is safely readable from bytes.
+///
+/// Not all types are valid for all values. For example, a `bool` must be either
+/// zero or one, so reading arbitrary bytes into something that contains a
+/// `bool` is not okay.
+///
+/// It's okay for the type to have padding, as initializing those bytes has no
+/// effect.
+///
+/// # Safety
+///
+/// All bit-patterns must be valid for this type.
+pub unsafe trait ReadableFromBytes {}
+
+// SAFETY: All bit patterns are acceptable values of the types below.
+unsafe impl ReadableFromBytes for u8 {}
+unsafe impl ReadableFromBytes for u16 {}
+unsafe impl ReadableFromBytes for u32 {}
+unsafe impl ReadableFromBytes for u64 {}
+unsafe impl ReadableFromBytes for usize {}
+unsafe impl ReadableFromBytes for i8 {}
+unsafe impl ReadableFromBytes for i16 {}
+unsafe impl ReadableFromBytes for i32 {}
+unsafe impl ReadableFromBytes for i64 {}
+unsafe impl ReadableFromBytes for isize {}
+// SAFETY: If all bit patterns are acceptable for individual values in an array,
+// then all bit patterns are also acceptable for arrays of that type.
+unsafe impl<T: ReadableFromBytes> ReadableFromBytes for [T] {}
+unsafe impl<T: ReadableFromBytes, const N: usize> ReadableFromBytes for [T; N] {}
+
+/// Specifies that a type is safely writable to bytes.
+///
+/// If a struct implements this trait, then it is okay to copy it byte-for-byte
+/// to userspace. This means that it should not have any padding, as padding
+/// bytes are uninitialized. Reading uninitialized memory is not just undefined
+/// behavior, it may even lead to leaking sensitive information on the stack to
+/// userspace.
+///
+/// The struct should also not hold kernel pointers, as kernel pointer addresses
+/// are also considered sensitive. However, leaking kernel pointers is not
+/// considered undefined behavior by Rust, so this is a correctness requirement,
+/// but not a safety requirement.
+///
+/// # Safety
+///
+/// Values of this type may not contain any uninitialized bytes.
+pub unsafe trait WritableToBytes {}
+
+// SAFETY: Instances of the following types have no uninitialized portions.
+unsafe impl WritableToBytes for u8 {}
+unsafe impl WritableToBytes for u16 {}
+unsafe impl WritableToBytes for u32 {}
+unsafe impl WritableToBytes for u64 {}
+unsafe impl WritableToBytes for usize {}
+unsafe impl WritableToBytes for i8 {}
+unsafe impl WritableToBytes for i16 {}
+unsafe impl WritableToBytes for i32 {}
+unsafe impl WritableToBytes for i64 {}
+unsafe impl WritableToBytes for isize {}
+unsafe impl WritableToBytes for bool {}
+unsafe impl WritableToBytes for char {}
+unsafe impl WritableToBytes for str {}
+// SAFETY: If individual values in an array have no uninitialized portions, then
+// the the array itself does not have any uninitialized portions either.
+unsafe impl<T: WritableToBytes> WritableToBytes for [T] {}
+unsafe impl<T: WritableToBytes, const N: usize> WritableToBytes for [T; N] {}

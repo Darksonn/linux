@@ -52,6 +52,40 @@ unsigned long rust_helper_copy_to_user(void __user *to, const void *from,
 }
 EXPORT_SYMBOL_GPL(rust_helper_copy_to_user);
 
+/*
+ * These methods skip the `check_object_size` check that `copy_[to|from]_user`
+ * normally performs. In C, these checks are skipped whenever the length is a
+ * compile-time constant, since when that is the case, the kernel pointer
+ * usually points at a local variable that is being initialized and the kernel
+ * pointer is trivially non-dangling.
+ *
+ * These helpers serve the same purpose in Rust. Whenever the length is known at
+ * compile-time, we call this helper to skip the check.
+ */
+unsigned long rust_helper_copy_from_user_unsafe_skip_check_object_size(void *to, const void __user *from, unsigned long n)
+{
+	unsigned long res;
+
+	might_fault();
+	instrument_copy_from_user_before(to, from, n);
+	if (should_fail_usercopy())
+		return n;
+	res = raw_copy_from_user(to, from, n);
+	instrument_copy_from_user_after(to, from, n, res);
+	return res;
+}
+EXPORT_SYMBOL_GPL(rust_helper_copy_from_user_unsafe_skip_check_object_size);
+
+unsigned long rust_helper_copy_to_user_unsafe_skip_check_object_size(void __user *to, const void *from, unsigned long n)
+{
+	might_fault();
+	if (should_fail_usercopy())
+		return n;
+	instrument_copy_to_user(to, from, n);
+	return raw_copy_to_user(to, from, n);
+}
+EXPORT_SYMBOL_GPL(rust_helper_copy_to_user_unsafe_skip_check_object_size);
+
 void rust_helper_mutex_lock(struct mutex *lock)
 {
 	mutex_lock(lock);
