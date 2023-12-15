@@ -6,7 +6,8 @@
 //! variable.
 
 use super::{lock::Backend, lock::Guard, LockClassKey};
-use crate::{bindings, init::PinInit, pin_init, str::CStr, types::Opaque};
+use crate::{bindings, init::PinInit, pin_init, str::CStr, time::Jiffies, types::Opaque};
+use core::ffi::c_long;
 use core::marker::PhantomPinned;
 use macros::pin_data;
 
@@ -17,6 +18,8 @@ macro_rules! new_condvar {
         $crate::sync::CondVar::new($crate::optional_name!($($name)?), $crate::static_lock_class!())
     };
 }
+
+const MAX_SCHEDULE_TIMEOUT: c_long = c_long::MAX;
 
 /// A conditional variable.
 ///
@@ -102,7 +105,12 @@ impl CondVar {
         })
     }
 
-    fn wait_internal<T: ?Sized, B: Backend>(&self, wait_state: u32, guard: &mut Guard<'_, T, B>) {
+    fn wait_internal<T: ?Sized, B: Backend>(
+        &self,
+        wait_state: u32,
+        guard: &mut Guard<'_, T, B>,
+        timeout: c_long,
+    ) -> c_long {
         let wait = Opaque::<bindings::wait_queue_entry>::uninit();
 
         // SAFETY: `wait` points to valid memory.
@@ -113,11 +121,13 @@ impl CondVar {
             bindings::prepare_to_wait_exclusive(self.wait_list.get(), wait.get(), wait_state as _)
         };
 
-        // SAFETY: No arguments, switches to another thread.
-        guard.do_unlocked(|| unsafe { bindings::schedule() });
+        // SAFETY: Switches to another thread. The timeout can be any number.
+        let ret = guard.do_unlocked(|| unsafe { bindings::schedule_timeout(timeout) });
 
         // SAFETY: Both `wait` and `wait_list` point to valid memory.
         unsafe { bindings::finish_wait(self.wait_list.get(), wait.get()) };
+
+        ret
     }
 
     /// Releases the lock and waits for a notification in uninterruptible mode.
@@ -127,7 +137,7 @@ impl CondVar {
     /// [`CondVar::notify_one`] or [`CondVar::notify_all`]. Note that it may also wake up
     /// spuriously.
     pub fn wait<T: ?Sized, B: Backend>(&self, guard: &mut Guard<'_, T, B>) {
-        self.wait_internal(bindings::TASK_UNINTERRUPTIBLE, guard);
+        self.wait_internal(bindings::TASK_UNINTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
     }
 
     /// Releases the lock and waits for a notification in interruptible mode.
@@ -138,8 +148,29 @@ impl CondVar {
     /// Returns whether there is a signal pending.
     #[must_use = "wait_interruptible returns if a signal is pending, so the caller must check the return value"]
     pub fn wait_interruptible<T: ?Sized, B: Backend>(&self, guard: &mut Guard<'_, T, B>) -> bool {
-        self.wait_internal(bindings::TASK_INTERRUPTIBLE, guard);
+        self.wait_internal(bindings::TASK_INTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
         crate::current!().signal_pending()
+    }
+
+    /// Releases the lock and waits for a notification in interruptible mode.
+    ///
+    /// Atomically releases the given lock (whose ownership is proven by the guard) and puts the
+    /// thread to sleep. It wakes up when notified by [`CondVar::notify_one`] or
+    /// [`CondVar::notify_all`], or when a timeout occurs, or when the thread receives a signal.
+    #[must_use = "wait_interruptible_timeout returns if a signal is pending, so the caller must check the return value"]
+    pub fn wait_interruptible_timeout<T: ?Sized, B: Backend>(
+        &self,
+        guard: &mut Guard<'_, T, B>,
+        jiffies: Jiffies,
+    ) -> CondVarTimeoutResult {
+        let jiffies = jiffies.try_into().unwrap_or(MAX_SCHEDULE_TIMEOUT);
+        let res = self.wait_internal(bindings::TASK_INTERRUPTIBLE, guard, jiffies);
+
+        match (res as Jiffies, crate::current!().signal_pending()) {
+            (jiffies, true) => CondVarTimeoutResult::Signal { jiffies },
+            (0, false) => CondVarTimeoutResult::Timeout,
+            (jiffies, false) => CondVarTimeoutResult::Woken { jiffies },
+        }
     }
 
     /// Calls the kernel function to notify the appropriate number of threads with the given flags.
@@ -176,4 +207,20 @@ impl CondVar {
     pub fn notify_all(&self) {
         self.notify(0, 0);
     }
+}
+
+/// The return type of `wait_timeout`.
+pub enum CondVarTimeoutResult {
+    /// The timeout was reached.
+    Timeout,
+    /// Somebody woke us up.
+    Woken {
+        /// Remaining sleep duration.
+        jiffies: Jiffies,
+    },
+    /// A signal occurred.
+    Signal {
+        /// Remaining sleep duration.
+        jiffies: Jiffies,
+    },
 }
