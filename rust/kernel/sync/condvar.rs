@@ -7,7 +7,7 @@
 
 use super::{lock::Backend, lock::Guard, LockClassKey};
 use crate::{bindings, init::PinInit, pin_init, str::CStr, time::Jiffies, types::Opaque};
-use core::ffi::c_long;
+use core::ffi::{c_int, c_long, c_uint};
 use core::marker::PhantomPinned;
 use macros::pin_data;
 
@@ -20,6 +20,10 @@ macro_rules! new_condvar {
 }
 
 const MAX_SCHEDULE_TIMEOUT: c_long = c_long::MAX;
+
+const TASK_NORMAL: c_uint = bindings::TASK_NORMAL as c_uint;
+const TASK_INTERRUPTIBLE: c_int = bindings::TASK_INTERRUPTIBLE as c_int;
+const TASK_UNINTERRUPTIBLE: c_int = bindings::TASK_UNINTERRUPTIBLE as c_int;
 
 /// A conditional variable.
 ///
@@ -107,7 +111,7 @@ impl CondVar {
 
     fn wait_internal<T: ?Sized, B: Backend>(
         &self,
-        wait_state: u32,
+        wait_state: c_int,
         guard: &mut Guard<'_, T, B>,
         timeout: c_long,
     ) -> c_long {
@@ -118,7 +122,7 @@ impl CondVar {
 
         // SAFETY: Both `wait` and `wait_list` point to valid memory.
         unsafe {
-            bindings::prepare_to_wait_exclusive(self.wait_list.get(), wait.get(), wait_state as _)
+            bindings::prepare_to_wait_exclusive(self.wait_list.get(), wait.get(), wait_state)
         };
 
         // SAFETY: Switches to another thread. The timeout can be any number.
@@ -137,7 +141,7 @@ impl CondVar {
     /// [`CondVar::notify_one`] or [`CondVar::notify_all`]. Note that it may also wake up
     /// spuriously.
     pub fn wait<T: ?Sized, B: Backend>(&self, guard: &mut Guard<'_, T, B>) {
-        self.wait_internal(bindings::TASK_UNINTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
+        self.wait_internal(TASK_UNINTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
     }
 
     /// Releases the lock and waits for a notification in interruptible mode.
@@ -148,7 +152,7 @@ impl CondVar {
     /// Returns whether there is a signal pending.
     #[must_use = "wait_interruptible returns if a signal is pending, so the caller must check the return value"]
     pub fn wait_interruptible<T: ?Sized, B: Backend>(&self, guard: &mut Guard<'_, T, B>) -> bool {
-        self.wait_internal(bindings::TASK_INTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
+        self.wait_internal(TASK_INTERRUPTIBLE, guard, MAX_SCHEDULE_TIMEOUT);
         crate::current!().signal_pending()
     }
 
@@ -164,7 +168,7 @@ impl CondVar {
         jiffies: Jiffies,
     ) -> CondVarTimeoutResult {
         let jiffies = jiffies.try_into().unwrap_or(MAX_SCHEDULE_TIMEOUT);
-        let res = self.wait_internal(bindings::TASK_INTERRUPTIBLE, guard, jiffies);
+        let res = self.wait_internal(TASK_INTERRUPTIBLE, guard, jiffies);
 
         match (res as Jiffies, crate::current!().signal_pending()) {
             (jiffies, true) => CondVarTimeoutResult::Signal { jiffies },
@@ -174,22 +178,15 @@ impl CondVar {
     }
 
     /// Calls the kernel function to notify the appropriate number of threads with the given flags.
-    fn notify(&self, count: i32, flags: u32) {
+    fn notify(&self, count: c_int) {
         // SAFETY: `wait_list` points to valid memory.
-        unsafe {
-            bindings::__wake_up(
-                self.wait_list.get(),
-                bindings::TASK_NORMAL,
-                count,
-                flags as _,
-            )
-        };
+        unsafe { bindings::__wake_up(self.wait_list.get(), TASK_NORMAL, count, ptr::null_mut()) };
     }
 
     /// Calls the kernel function to notify one thread synchronously.
     pub fn notify_sync(&self) {
         // SAFETY: `wait_list` points to valid memory.
-        unsafe { bindings::__wake_up_sync(self.wait_list.get(), bindings::TASK_NORMAL) };
+        unsafe { bindings::__wake_up_sync(self.wait_list.get(), TASK_NORMAL) };
     }
 
     /// Wakes a single waiter up, if any.
@@ -197,7 +194,7 @@ impl CondVar {
     /// This is not 'sticky' in the sense that if no thread is waiting, the notification is lost
     /// completely (as opposed to automatically waking up the next waiter).
     pub fn notify_one(&self) {
-        self.notify(1, 0);
+        self.notify(1);
     }
 
     /// Wakes all waiters up, if any.
@@ -205,7 +202,7 @@ impl CondVar {
     /// This is not 'sticky' in the sense that if no thread is waiting, the notification is lost
     /// completely (as opposed to automatically waking up the next waiter).
     pub fn notify_all(&self) {
-        self.notify(0, 0);
+        self.notify(0);
     }
 }
 
