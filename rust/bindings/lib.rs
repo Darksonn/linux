@@ -48,3 +48,6 @@ mod bindings_helper {
 }
 
 pub use bindings_raw::*;
+
+mod refcount_t_impl;
+pub use self::refcount_t_impl::{refcount_dec_and_test, refcount_inc, REFCOUNT_INIT};
