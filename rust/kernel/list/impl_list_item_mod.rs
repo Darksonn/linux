@@ -61,6 +61,49 @@ macro_rules! impl_has_list_links {
 }
 pub use impl_has_list_links;
 
+/// Declares that the `ListLinks<ID>` field in this struct is inside a `ListLinksSelfPtr<T, ID>`.
+///
+/// # Safety
+///
+/// The `ListLinks<ID>` field of this struct at the offset `HasListLinks<ID>::OFFSET` must be
+/// inside a `ListLinksSelfPtr<T, ID>`.
+pub unsafe trait HasSelfPtr<T: ?Sized, const ID: u64 = 0>
+where
+    Self: HasListLinks<ID>,
+{
+}
+
+/// Implements the [`HasListLinks`] and [`HasSelfPtr`] traits for the given type.
+#[macro_export]
+macro_rules! impl_has_list_links_self_ptr {
+    ($(impl$({$($implarg:tt)*})?
+       HasSelfPtr<$item_type:ty $(, $id:tt)?>
+       for $self:ident $(<$($selfarg:ty),*>)?
+       { self.$field:ident }
+    )*) => {$(
+        // SAFETY: The implementation of `raw_get_list_links` only compiles if the field has the
+        // right type.
+        unsafe impl$(<$($implarg)*>)? $crate::list::HasSelfPtr<$item_type $(, $id)?> for
+            $self $(<$($selfarg),*>)?
+        {}
+
+        unsafe impl$(<$($implarg)*>)? $crate::list::HasListLinks$(<$id>)? for
+            $self $(<$($selfarg),*>)?
+        {
+            const OFFSET: usize = ::core::mem::offset_of!(Self, $field) as usize;
+
+            #[inline]
+            unsafe fn raw_get_list_links(ptr: *mut Self) -> *mut $crate::list::ListLinks$(<$id>)? {
+                // SAFETY: The caller promises that the pointer is not dangling.
+                let ptr: *mut $crate::list::ListLinksSelfPtr<$item_type $(, $id)?> =
+                    unsafe { ::core::ptr::addr_of_mut!((*ptr).$field) };
+                ptr.cast()
+            }
+        }
+    )*};
+}
+pub use impl_has_list_links_self_ptr;
+
 /// Implements the [`ListItem`] trait for the given type.
 ///
 /// Assumes that the type implements [`HasListLinks`].
@@ -87,6 +130,46 @@ macro_rules! impl_list_item {
 
             unsafe fn prepare_to_insert(me: *const Self) -> *mut ListLinks<$num> {
                 unsafe { Self::view_links(me) }
+            }
+
+            unsafe fn post_remove(me: *mut ListLinks<$num>) -> *const Self {
+                unsafe { Self::view_value(me) }
+            }
+        }
+    };
+
+    (
+        impl$({$($generics:tt)*})? ListItem<$num:tt> for $t:ty {
+            using ListLinksSelfPtr;
+        } $($rest:tt)*
+    ) => {
+        unsafe impl$(<$($generics)*>)? ListItem<$num> for $t {
+            unsafe fn prepare_to_insert(me: *const Self) -> *mut ListLinks<$num> {
+                let links_field = unsafe { Self::view_links(me) };
+
+                let spoff = ListLinksSelfPtr::<Self, $num>::LIST_LINKS_SELF_PTR_OFFSET;
+                let self_ptr = unsafe { (links_field as *const u8).add(spoff)
+                    as *const ::core::cell::UnsafeCell<*const Self> };
+                let cell_inner = ::core::cell::UnsafeCell::raw_get(self_ptr);
+
+                unsafe { ::core::ptr::write(cell_inner, me) };
+                links_field
+            }
+
+            unsafe fn view_links(me: *const Self) -> *mut ListLinks<$num> {
+                unsafe {
+                    <Self as HasListLinks<$num>>::raw_get_list_links(me.cast_mut())
+                }
+            }
+
+            unsafe fn view_value(links_field: *mut ListLinks<$num>) -> *const Self {
+                let spoff = ListLinksSelfPtr::<Self, $num>::LIST_LINKS_SELF_PTR_OFFSET;
+                let self_ptr = unsafe { (links_field as *const u8).add(spoff)
+                    as *const ::core::cell::UnsafeCell<*const Self> };
+                let cell_inner = ::core::cell::UnsafeCell::raw_get(self_ptr);
+                unsafe {
+                    ::core::ptr::read(cell_inner)
+                }
             }
 
             unsafe fn post_remove(me: *mut ListLinks<$num>) -> *const Self {
