@@ -8,9 +8,10 @@ use crate::error;
 use crate::prelude::*;
 use crate::sync::{Arc, ArcBorrow, UniqueArc};
 use core::alloc::AllocError;
-use core::marker::Unsize;
+use core::marker::{PhantomPinned, Unsize};
 use core::ops::Deref;
 use core::pin::Pin;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Declares that this type has some way to ensure that there is exactly one `ListArc` instance for
 /// this id.
@@ -33,15 +34,60 @@ pub trait ListArcSafe<const ID: u64 = 0> {
     unsafe fn on_drop_list_arc(&self);
 }
 
+/// Declares that this type is able to safely attempt to create `ListArc`s at any time.
+///
+/// # Safety
+///
+/// Implementers must ensure that `try_new_list_arc` does not return `true` if a `ListArc` already
+/// exists.
+pub unsafe trait TryNewListArc<const ID: u64 = 0>: ListArcSafe<ID> {
+    /// Attempts to convert an `Arc<Self>` into an `ListArc<Self>`. Returns `true` if the
+    /// conversion was successful.
+    fn try_new_list_arc(&self) -> bool;
+}
+
 /// Declares that this type supports [`ListArc`].
 ///
-/// When using this macro, it will only be possible to create a [`ListArc`] from a [`UniqueArc`].
+/// When using this macro, you may choose between the `untracked` strategy where it is not tracked
+/// whether a [`ListArc`] exists, and the `tracked_by` strategy where the tracking is deferred to a
+/// field of the struct. The `tracked_by` strategy can be combined with a field of type
+/// [`AtomicListArcTracker`] to track whether a [`ListArc`] exists.
 #[macro_export]
 macro_rules! impl_list_arc_safe {
     (impl$({$($generics:tt)*})? ListArcSafe<$num:tt> for $t:ty { untracked; } $($rest:tt)*) => {
-        impl$(<$($generics)*>)? $crate::list::ListArcSafe<$num> for $t {
+        impl$(<$($generics)*>)? ListArcSafe<$num> for $t {
             unsafe fn on_create_list_arc_from_unique(&mut self) {}
             unsafe fn on_drop_list_arc(&self) {}
+        }
+        $crate::list::impl_list_arc_safe! { $($rest)* }
+    };
+
+    (impl$({$($generics:tt)*})? ListArcSafe<$num:tt> for $t:ty {
+        tracked_by $field:ident : $fty:ty;
+    } $($rest:tt)*) => {
+        impl$(<$($generics)*>)? ListArcSafe<$num> for $t {
+            unsafe fn on_create_list_arc_from_unique(&mut self) {
+                let me = self as *mut Self;
+                let field: *mut $fty = unsafe { ::core::ptr::addr_of_mut!((*me).$field) };
+                unsafe { <$fty as $crate::list::ListArcSafe<$num>>::on_create_list_arc_from_unique(
+                        &mut *field
+                ) };
+            }
+            unsafe fn on_drop_list_arc(&self) {
+                let me = self as *const Self;
+                let field: *const $fty = unsafe { ::core::ptr::addr_of!((*me).$field) };
+                unsafe { <$fty as $crate::list::ListArcSafe<$num>>::on_drop_list_arc(&*field) };
+            }
+        }
+        unsafe impl$(<$($generics)*>)? TryNewListArc<$num> for $t
+        where
+            $fty: TryNewListArc<$num>,
+        {
+            fn try_new_list_arc(&self) -> bool {
+                let me = self as *const Self;
+                let field: *const $fty = unsafe { ::core::ptr::addr_of!((*me).$field) };
+                unsafe { <$fty as $crate::list::TryNewListArc<$num>>::try_new_list_arc(&*field) }
+            }
         }
         $crate::list::impl_list_arc_safe! { $($rest)* }
     };
@@ -164,6 +210,36 @@ where
         // SAFETY: We continue to treat this pointer as pinned after this call, since `ListArc`
         // implicitly pins its value.
         Self::pair_from_unique(unsafe { Pin::into_inner_unchecked(unique) })
+    }
+
+    /// Try to create a new `ListArc`.
+    ///
+    /// This fails if this value already has a `ListArc`.
+    pub fn try_from_arc(arc: Arc<T>) -> Result<Self, Arc<T>>
+    where
+        T: TryNewListArc<ID>,
+    {
+        if arc.try_new_list_arc() {
+            // SAFETY: The `try_new_list_arc` method returned true, so the tracking now thinks that
+            // a `ListArc` exists, so we can create one.
+            Ok(unsafe { Self::transmute_from_arc(arc) })
+        } else {
+            Err(arc)
+        }
+    }
+
+    /// Try to create a new `ListArc`.
+    ///
+    /// If it's not possible to create a new `ListArc`, then the `Arc` is dropped. This will never
+    /// run the destructor of the value.
+    pub fn try_from_arc_or_drop(arc: Arc<T>) -> Option<Self>
+    where
+        T: TryNewListArc<ID>,
+    {
+        match Self::try_from_arc(arc) {
+            Ok(list_arc) => Some(list_arc),
+            Err(arc) => Arc::into_unique_or_drop(arc).map(Self::from_pin_unique),
+        }
     }
 
     /// Transmutes an [`Arc`] into a `ListArc` without updating the tracking inside `T`.
@@ -299,4 +375,55 @@ where
     T: ListArcSafe<ID> + Unsize<U> + ?Sized,
     U: ListArcSafe<ID> + ?Sized,
 {
+}
+
+/// A utility for tracking whether a [`ListArc`] exists using an atomic.
+///
+/// # Invariant
+///
+/// If the boolean is `false`, then there is no [`ListArc`] for this value.
+#[repr(transparent)]
+pub struct AtomicListArcTracker<const ID: u64 = 0> {
+    inner: AtomicBool,
+    _pin: PhantomPinned,
+}
+
+impl<const ID: u64> AtomicListArcTracker<ID> {
+    /// Creates a new initializer for this type.
+    pub fn new() -> impl PinInit<Self> {
+        // INVARIANT: Pin-init initializers can't be used on an existing `Arc`, so this value will
+        // not be constructed in an `Arc` that already has a `ListArc`.
+        Self {
+            inner: AtomicBool::new(false),
+            _pin: PhantomPinned,
+        }
+    }
+}
+
+impl<const ID: u64> ListArcSafe<ID> for AtomicListArcTracker<ID> {
+    unsafe fn on_create_list_arc_from_unique(&mut self) {
+        // INVARIANT: We just created a ListArc, so the boolean should be true.
+        *self.inner.get_mut() = true;
+    }
+
+    unsafe fn on_drop_list_arc(&self) {
+        // INVARIANT: We just dropped a ListArc, so the boolean should be false.
+        self.inner.store(false, Ordering::Release);
+    }
+}
+
+// SAFETY: If this method returns `true`, then by the type invariant there is no `ListArc` before
+// this call, so it is okay to create a new `ListArc`.
+//
+// The acquire ordering will synchronize with the release store from the destruction of any
+// previous `ListArc`, so if there was a previous `ListArc`, then the destruction of the previous
+// `ListArc` happens-before the creation of the new `ListArc`.
+unsafe impl<const ID: u64> TryNewListArc<ID> for AtomicListArcTracker<ID> {
+    fn try_new_list_arc(&self) -> bool {
+        // INVARIANT: If this method returns true, then the boolean used to be false, and is no
+        // longer false, so it is okay for the caller to create a new [`ListArc`].
+        self.inner
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    }
 }
