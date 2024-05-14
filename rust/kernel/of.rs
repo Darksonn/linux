@@ -4,14 +4,16 @@
 //!
 //! C header: [`include/linux/of_*.h`](../../../../include/linux/of_*.h)
 
-use crate::{bindings, driver, str::BStr};
+use crate::{
+    bindings,
+    device_id::RawDeviceId,
+    str::BStr
+};
 
 /// An open firmware device id.
 #[derive(Clone, Copy)]
-pub enum DeviceId {
-    /// An open firmware device id where only a compatible string is specified.
-    Compatible(&'static BStr),
-}
+pub struct DeviceId(pub &'static BStr);
+
 
 /// Defines a const open firmware device id table that also carries per-entry data/context/info.
 ///
@@ -32,12 +34,17 @@ pub enum DeviceId {
 #[macro_export]
 macro_rules! define_of_id_table {
     ($data_type:ty, $($t:tt)*) => {
-        $crate::define_id_table!(OF_DEVICE_ID_TABLE, $crate::of::DeviceId, $data_type, $($t)*);
+        type IdInfo = $data_type;
+        const OF_DEVICE_ID_TABLE: $crate::device_id::IdTable<'static, $crate::of::DeviceId, $data_type> = {
+            $crate::define_id_array!(ARRAY, $crate::of::DeviceId, $data_type, $($t)* );
+            ARRAY.as_table()
+        };
     };
 }
+pub use define_of_id_table;
 
 // SAFETY: `ZERO` is all zeroed-out and `to_rawid` stores `offset` in `of_device_id::data`.
-unsafe impl const driver::RawDeviceId for DeviceId {
+unsafe impl RawDeviceId for DeviceId {
     type RawType = bindings::of_device_id;
     const ZERO: Self::RawType = bindings::of_device_id {
         name: [0; 32],
@@ -45,15 +52,17 @@ unsafe impl const driver::RawDeviceId for DeviceId {
         compatible: [0; 128],
         data: core::ptr::null(),
     };
+}
 
-    fn to_rawid(&self, offset: isize) -> Self::RawType {
-        let DeviceId::Compatible(compatible) = self;
+impl DeviceId {
+    #[doc(hidden)]
+    pub const fn to_rawid(&self, offset: isize) -> <Self as RawDeviceId>::RawType {
         let mut id = Self::ZERO;
         let mut i = 0;
-        while i < compatible.len() {
+        while i < self.0.len() {
             // If `compatible` does not fit in `id.compatible`, an "index out of bounds" build time
             // error will be triggered.
-            id.compatible[i] = compatible[i] as _;
+            id.compatible[i] = self.0.deref_const()[i] as _;
             i += 1;
         }
         id.compatible[i] = b'\0' as _;

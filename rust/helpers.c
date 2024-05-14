@@ -29,6 +29,7 @@
 #include <linux/errname.h>
 #include <linux/io.h>
 #include <linux/mutex.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pci.h>
@@ -318,6 +319,25 @@ const struct of_device_id *rust_helper_of_match_device(
 	return of_match_device(matches, dev);
 }
 EXPORT_SYMBOL_GPL(rust_helper_of_match_device);
+
+#ifndef CONFIG_OF_DYNAMIC
+struct device_node *rust_helper_of_node_get(struct device_node *node)
+{
+	return of_node_get(node);
+}
+EXPORT_SYMBOL_GPL(rust_helper_of_node_get);
+
+void rust_helper_of_node_put(struct device_node *node) {
+	of_node_put(node);
+}
+EXPORT_SYMBOL_GPL(rust_helper_of_node_put);
+#endif /* !CONFIG_OF_DYNAMIC */
+
+struct device_node *rust_helper_dev_of_node(struct device *dev)
+{
+	return dev_of_node(dev);
+}
+EXPORT_SYMBOL_GPL(rust_helper_dev_of_node);
 
 void rust_helper_pci_set_drvdata(struct pci_dev *pdev, void *data)
 {

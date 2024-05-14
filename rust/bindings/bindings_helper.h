@@ -17,6 +17,7 @@
 #include <linux/firmware.h>
 #include <linux/jiffies.h>
 #include <linux/mdio.h>
+#include <linux/of.h>
 #include <linux/pci.h>
 #include <linux/phy.h>
 #include <linux/platform_device.h>
