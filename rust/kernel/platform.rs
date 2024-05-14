@@ -7,13 +7,11 @@
 //! C header: [`include/linux/platform_device.h`](../../../../include/linux/platform_device.h)
 
 use crate::{
-    bindings,
-    device::{self, RawDevice},
-    driver,
-    error::{from_kernel_result, to_result, Result},
+    bindings, container_of, device, device_id, driver,
+    error::{from_result, to_result, Result},
     of,
     str::CStr,
-    types::ForeignOwnable,
+    types::{ARef, ForeignOwnable},
     ThisModule,
 };
 
@@ -26,32 +24,30 @@ pub struct Adapter<T: Driver>(T);
 impl<T: Driver> driver::DriverOps for Adapter<T> {
     type RegType = bindings::platform_driver;
 
-    unsafe fn register(
-        reg: *mut bindings::platform_driver,
+    fn register(
+        reg: &mut bindings::platform_driver,
         name: &'static CStr,
         module: &'static ThisModule,
     ) -> Result {
         // SAFETY: By the safety requirements of this function (defined in the trait definition),
         // `reg` is non-null and valid.
-        let pdrv = unsafe { &mut *reg };
+        let pdrv = &mut *reg;
 
         pdrv.driver.name = name.as_char_ptr();
         pdrv.probe = Some(Self::probe_callback);
         pdrv.remove = Some(Self::remove_callback);
-        if let Some(t) = T::OF_DEVICE_ID_TABLE {
-            pdrv.driver.of_match_table = t.as_ref();
-        }
+        pdrv.driver.of_match_table = T::OF_DEVICE_ID_TABLE.as_ref();
         // SAFETY:
         //   - `pdrv` lives at least until the call to `platform_driver_unregister()` returns.
         //   - `name` pointer has static lifetime.
         //   - `module.0` lives at least as long as the module.
         //   - `probe()` and `remove()` are static functions.
         //   - `of_match_table` is either a raw pointer with static lifetime,
-        //      as guaranteed by the [`driver::IdTable`] type, or null.
+        //      as guaranteed by the [`device_id::IdTable`] type, or null.
         to_result(unsafe { bindings::__platform_driver_register(reg, module.0) })
     }
 
-    unsafe fn unregister(reg: *mut bindings::platform_driver) {
+    fn unregister(reg: &mut bindings::platform_driver) {
         // SAFETY: By the safety requirements of this function (defined in the trait definition),
         // `reg` was passed (and updated) by a previous successful call to
         // `platform_driver_register`.
@@ -61,11 +57,11 @@ impl<T: Driver> driver::DriverOps for Adapter<T> {
 
 impl<T: Driver> Adapter<T> {
     fn get_id_info(dev: &Device) -> Option<&'static T::IdInfo> {
-        let table = T::OF_DEVICE_ID_TABLE?;
+        let table = T::OF_DEVICE_ID_TABLE;
 
         // SAFETY: `table` has static lifetime, so it is valid for read. `dev` is guaranteed to be
         // valid while it's alive, so is the raw device returned by it.
-        let id = unsafe { bindings::of_match_device(table.as_ref(), dev.raw_device()) };
+        let id = unsafe { bindings::of_match_device(table.as_ref(), &((*(dev.as_raw())).dev)) };
         if id.is_null() {
             return None;
         }
@@ -96,11 +92,14 @@ impl<T: Driver> Adapter<T> {
             // SAFETY: `pdev` is valid by the contract with the C code. `dev` is alive only for the
             // duration of this call, so it is guaranteed to remain alive for the lifetime of
             // `pdev`.
-            let mut dev = unsafe { Device::from_ptr(pdev) };
-            let info = Self::get_id_info(&dev);
-            let data = T::probe(&mut dev, info)?;
+            // let mut dev = unsafe { Device::from_ptr(pdev) };
+            let dev = unsafe { device::Device::from_raw(&mut (*pdev).dev) };
+            let mut pdev = unsafe { Device::from_dev(dev) };
+
+            let info = Self::get_id_info(&pdev);
+            let data = T::probe(&mut pdev, info)?;
             // SAFETY: `pdev` is guaranteed to be a valid, non-null pointer.
-            unsafe { bindings::platform_set_drvdata(pdev, data.into_foreign() as _) };
+            unsafe { bindings::platform_set_drvdata(pdev.as_raw(), data.into_foreign() as _) };
             Ok(0)
         })
     }
@@ -116,9 +115,7 @@ impl<T: Driver> Adapter<T> {
             //     `remove` is the canonical kernel location to free driver data. so OK
             //     to convert the pointer back to a Rust structure here.
             let data = unsafe { T::Data::from_foreign(ptr) };
-            let ret = T::remove(&data);
-            <T::Data as driver::DeviceRemoval>::device_remove(&data);
-            ret?;
+            T::remove(&data)?;
             Ok(0)
         })
     }
@@ -133,13 +130,13 @@ pub trait Driver {
     ///
     /// Require that `Data` implements `ForeignOwnable`. We guarantee to
     /// never move the underlying wrapped data structure. This allows
-    type Data: ForeignOwnable + Send + Sync + driver::DeviceRemoval = ();
+    type Data: ForeignOwnable + Send + Sync;
 
     /// The type holding information about each device id supported by the driver.
-    type IdInfo: 'static = ();
+    type IdInfo: 'static;
 
     /// The table of device ids supported by the driver.
-    const OF_DEVICE_ID_TABLE: Option<driver::IdTable<'static, of::DeviceId, Self::IdInfo>> = None;
+    const OF_DEVICE_ID_TABLE: device_id::IdTable<'static, of::DeviceId, Self::IdInfo>;
 
     /// Platform driver probe.
     ///
@@ -158,37 +155,35 @@ pub trait Driver {
 
 /// A platform device.
 ///
-/// # Invariants
-///
-/// The field `ptr` is non-null and valid for the lifetime of the object.
-pub struct Device {
-    ptr: *mut bindings::platform_device,
-}
+#[derive(Clone)]
+pub struct Device(ARef<device::Device>);
 
 impl Device {
-    /// Creates a new device from the given pointer.
+    /// Create a PCI Device instance from an existing `device::Device`.
     ///
     /// # Safety
     ///
-    /// `ptr` must be non-null and valid. It must remain valid for the lifetime of the returned
-    /// instance.
-    unsafe fn from_ptr(ptr: *mut bindings::platform_device) -> Self {
-        // INVARIANT: The safety requirements of the function ensure the lifetime invariant.
-        Self { ptr }
+    /// `dev` must be an `ARef<device::Device>` whose underlying `bindings::device` is a member of
+    /// a `bindings::platform_device`.
+    pub unsafe fn from_dev(dev: ARef<device::Device>) -> Self {
+        Self(dev)
+    }
+
+    fn as_raw(&self) -> *mut bindings::platform_device {
+        // SAFETY: Guaranteed by the requirements described in pci::Device::new().
+        unsafe { container_of!(self.0.as_raw(), bindings::platform_device, dev) as _ }
     }
 
     /// Returns id of the platform device.
     pub fn id(&self) -> i32 {
         // SAFETY: By the type invariants, we know that `self.ptr` is non-null and valid.
-        unsafe { (*self.ptr).id }
+        unsafe { (*self.as_raw()).id }
     }
 }
 
-// SAFETY: The device returned by `raw_device` is the raw platform device.
-unsafe impl device::RawDevice for Device {
-    fn raw_device(&self) -> *mut bindings::device {
-        // SAFETY: By the type invariants, we know that `self.ptr` is non-null and valid.
-        unsafe { &mut (*self.ptr).dev }
+impl AsRef<device::Device> for Device {
+    fn as_ref(&self) -> &device::Device {
+        &self.0
     }
 }
 
