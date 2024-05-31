@@ -165,6 +165,30 @@ rust_helper_krealloc(const void *objp, size_t new_size, gfp_t flags)
 }
 EXPORT_SYMBOL_GPL(rust_helper_krealloc);
 
+void rust_helper_preempt_enable_notrace(void)
+{
+	preempt_enable_notrace();
+}
+EXPORT_SYMBOL_GPL(rust_helper_preempt_enable_notrace);
+
+void rust_helper_preempt_disable_notrace(void)
+{
+	preempt_disable_notrace();
+}
+EXPORT_SYMBOL_GPL(rust_helper_preempt_disable_notrace);
+
+bool rust_helper_current_cpu_online(void)
+{
+	return cpu_online(raw_smp_processor_id());
+}
+EXPORT_SYMBOL_GPL(rust_helper_current_cpu_online);
+
+void *rust_helper___rcu_dereference_raw(void **p)
+{
+	return rcu_dereference_raw(p);
+}
+EXPORT_SYMBOL_GPL(rust_helper___rcu_dereference_raw);
+
 /*
  * `bindgen` binds the C `size_t` type as the Rust `usize` type, so we can
  * use it in contexts where Rust expects a `usize` like slice (array) indices.
