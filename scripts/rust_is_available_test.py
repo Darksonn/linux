@@ -226,6 +226,13 @@ else:
         result = self.run_script(self.Expected.SUCCESS_WITH_WARNINGS, { "BINDGEN": bindgen })
         self.assertIn(f"Rust bindings generator '{bindgen}' is too new. This may or may not work.", result.stderr)
 
+    def test_bindgen_bad_version_0_66_0_and_0_66_1(self):
+        for version in ("0.66.0", "0.66.1"):
+            with self.subTest(version=version):
+                bindgen = self.generate_bindgen_version(f"bindgen {version}")
+                result = self.run_script(self.Expected.SUCCESS_WITH_WARNINGS, { "BINDGEN": bindgen })
+                self.assertIn(f"Rust bindings generator '{bindgen}' versions 0.66.0 and 0.66.1 may not", result.stderr)
+
     def test_bindgen_libclang_failure(self):
         for env in (
             { "LLVM_CONFIG_PATH": self.missing },
