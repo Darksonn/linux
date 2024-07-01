@@ -5,16 +5,89 @@ Quick Start
 
 This document describes how to get started with kernel development in Rust.
 
+There are a few ways to install a Rust toolchain needed for kernel development.
+A simple way is to use the packages from your Linux distribution if they are
+suitable -- the first section below explains this approach. An advantage of this
+approach is that, typically, the distribution will match the LLVM used by Rust
+and Clang.
+
+Alternatively, the next two "Requirements" sections explain each component and
+how to install them through ``rustup``, the standalone installers from Rust
+and/or building them.
+
+The rest of the document explains other aspects on how to get started.
+
+
+Distributions
+-------------
+
+Arch Linux
+**********
+
+Arch Linux provides recent Rust releases and thus it should generally work out
+of the box, e.g.::
+
+	pacman -S rust rust-src rust-bindgen
+
+
+Debian
+******
+
+Debian Unstable (Sid), outside of the freeze period, provides recent Rust
+release and thus it should generally work out of the box, e.g.::
+
+	apt install rustc rust-src bindgen rustfmt rust-clippy
+
+
+Fedora Linux
+************
+
+Fedora Linux provides recent Rust releases and thus it should generally work out
+of the box, e.g.::
+
+	dnf install rust rust-src bindgen-cli rustfmt clippy
+
+
+Gentoo Linux
+************
+
+Gentoo Linux (and especially the testing branch) provides recent Rust releases
+and thus it should generally work out of the box, e.g.::
+
+	USE='rust-src rustfmt clippy' emerge dev-lang/rust dev-util/bindgen
+
+``LIBCLANG_PATH`` may need to be set.
+
+
+Nix
+***
+
+Nix (unstable channel) provides recent Rust releases and thus it should
+generally work out of the box, e.g.::
+
+	{ pkgs ? import <nixpkgs> {} }:
+	pkgs.mkShell {
+	  nativeBuildInputs = with pkgs; [ rustc rust-bindgen rustfmt clippy ];
+	  RUST_LIB_SRC = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+	}
+
+
+openSUSE
+********
+
+openSUSE Tumbleweed provides recent Rust releases and thus it should generally
+work out of the box, e.g.::
+
+	zypper install rust rust-bindgen clang
+
+The Rust standard library source code, ``rustfmt`` and Clippy are not packaged
+(yet), thus currently they need to be installed separately.
+
 
 Requirements: Building
 ----------------------
 
 This section explains how to fetch the tools needed for building.
-
-Some of these requirements might be available from Linux distributions
-under names like ``rustc``, ``rust-src``, ``rust-bindgen``, etc. However,
-at the time of writing, they are likely not to be recent enough unless
-the distribution tracks the latest releases.
 
 To easily check whether the requirements are met, the following target
 can be used::
