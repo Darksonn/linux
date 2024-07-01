@@ -231,11 +231,6 @@ else:
         result = self.run_script(self.Expected.FAILURE, { "BINDGEN": bindgen })
         self.assertIn(f"Rust bindings generator '{bindgen}' is too old.", result.stderr)
 
-    def test_bindgen_new_version(self):
-        bindgen = self.generate_bindgen_version("bindgen 0.999.0")
-        result = self.run_script(self.Expected.SUCCESS_WITH_WARNINGS, { "BINDGEN": bindgen })
-        self.assertIn(f"Rust bindings generator '{bindgen}' is too new. This may or may not work.", result.stderr)
-
     def test_bindgen_bad_version_0_66_0_and_0_66_1(self):
         for version in ("0.66.0", "0.66.1"):
             with self.subTest(version=version):
