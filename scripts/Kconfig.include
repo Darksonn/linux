@@ -45,6 +45,12 @@ $(error-if,$(success,test -z "$(cc-info)"),Sorry$(comma) this C compiler is not 
 cc-name := $(shell,set -- $(cc-info) && echo $1)
 cc-version := $(shell,set -- $(cc-info) && echo $2)
 
+# Get the Rust compiler name, version, and error out if it is not supported.
+rustc-info := $(shell,$(srctree)/scripts/rustc-version.sh $(RUSTC))
+$(error-if,$(success,test -z "$(rustc-info)"),Sorry$(comma) this Rust compiler is not supported.)
+rustc-name := $(shell,set -- $(rustc-info) && echo $1)
+rustc-version := $(shell,set -- $(rustc-info) && echo $2)
+
 # Get the assembler name, version, and error out if it is not supported.
 as-info := $(shell,$(srctree)/scripts/as-version.sh $(CC) $(CLANG_FLAGS))
 $(error-if,$(success,test -z "$(as-info)"),Sorry$(comma) this assembler is not supported.)

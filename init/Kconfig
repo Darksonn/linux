@@ -1920,6 +1920,12 @@ config RUST
 
 	  If unsure, say N.
 
+config RUSTC_VERSION
+	int
+	depends on RUST
+	default $(rustc-version)
+	default 0
+
 config RUSTC_VERSION_TEXT
 	string
 	depends on RUST
