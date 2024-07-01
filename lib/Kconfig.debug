@@ -3020,6 +3020,24 @@ config RUST_OVERFLOW_CHECKS
 
 	  If unsure, say Y.
 
+config RUST_UNDEFINED_BEHAVIOR_CHECKS
+	bool "Undefined Behavior checks"
+	depends on RUST && RUSTC_VERSION >= 107900
+	help
+	  Enables rustc's `-Zub-checks` codegen option.
+
+	  This flag allows you to control whether additional runtime checks that
+	  detect some causes of Undefined Behavior at runtime will be emitted.
+	  When enabled, a Rust panic will occur if UB is detected.
+
+	  All checks are generated on a best-effort basis; even if there is a check
+	  implemented for some cause of Undefined Behavior, it may be possible for
+	  the check to not fire.
+
+	  Note that this will apply to all Rust code, including `core`.
+
+	  If unsure, say N.
+
 config RUST_BUILD_ASSERT_ALLOW
 	bool "Allow unoptimized build-time assertions"
 	depends on RUST

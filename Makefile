@@ -820,10 +820,15 @@ KBUILD_CFLAGS += -Os
 KBUILD_RUSTFLAGS += -Copt-level=s
 endif
 
-# Always set `debug-assertions` and `overflow-checks` because their default
-# depends on `opt-level` and `debug-assertions`, respectively.
+# Always set `debug-assertions` because its default depends on `opt-level`.
 KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
+
+# Always set `overflow-checks` and `ub-checks` because their default depends on
+# `debug-assertions`.
 KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
+ifeq ($(call rustc-min-version, 107900),y)
+KBUILD_RUSTFLAGS += -Zub-checks=$(if $(CONFIG_RUST_UNDEFINED_BEHAVIOR_CHECKS),y,n)
+endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
 ifdef CONFIG_CC_IS_GCC
