@@ -29,16 +29,15 @@ if that is the case.
 rustc
 *****
 
-A particular version of the Rust compiler is required. Newer versions may or
-may not work because, for the moment, the kernel depends on some unstable
-Rust features.
+A recent version of the Rust compiler is required.
 
 If ``rustup`` is being used, enter the kernel build directory (or use
-``--path=<build-dir>`` argument to the ``set`` sub-command) and run::
+``--path=<build-dir>`` argument to the ``set`` sub-command) and run,
+for instance::
 
 	rustup override set $(scripts/min-tool-version.sh rustc)
 
-This will configure your working directory to use the correct version of
+This will configure your working directory to use the given version of
 ``rustc`` without affecting your default toolchain.
 
 Note that the override applies to the current working directory (and its
