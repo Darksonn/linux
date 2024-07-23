@@ -366,6 +366,15 @@ impl<T: AlwaysRefCounted> ARef<T> {
             _p: PhantomData,
         }
     }
+
+    /// Pass ownership of the refcount to a raw pointer.
+    pub fn into_raw(self) -> NonNull<T> {
+        let ptr = self.ptr;
+        // Skip the destructor.
+        core::mem::forget(self);
+
+        ptr
+    }
 }
 
 impl<T: AlwaysRefCounted> Clone for ARef<T> {
