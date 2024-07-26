@@ -27,7 +27,7 @@ pub fn msecs_to_jiffies(msecs: Msecs) -> Jiffies {
 
 /// A Rust wrapper around a `ktime_t`.
 #[repr(transparent)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Ktime {
     inner: bindings::ktime_t,
 }
@@ -37,6 +37,11 @@ impl Ktime {
     #[inline]
     pub fn from_raw(inner: bindings::ktime_t) -> Self {
         Self { inner }
+    }
+
+    /// Creates a `ktime_t` containing zero.
+    pub const fn zero() -> Self {
+        Self { inner: 0 }
     }
 
     /// Get the current time using `CLOCK_MONOTONIC`.
@@ -79,5 +84,23 @@ impl core::ops::Sub for Ktime {
         Self {
             inner: self.inner - other.inner,
         }
+    }
+}
+
+impl core::ops::Add for Ktime {
+    type Output = Ktime;
+
+    #[inline]
+    fn add(self, other: Ktime) -> Ktime {
+        Self {
+            inner: self.inner + other.inner,
+        }
+    }
+}
+
+impl core::ops::AddAssign for Ktime {
+    #[inline]
+    fn add_assign(&mut self, rhs: Ktime) {
+        self.inner += rhs.inner;
     }
 }

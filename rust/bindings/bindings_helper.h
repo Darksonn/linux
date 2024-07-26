@@ -12,6 +12,7 @@
 #include <drm/drm_gem.h>
 #include <drm/drm_ioctl.h>
 #include <kunit/test.h>
+#include <linux/clk.h>
 #include <linux/devfreq.h>
 #include <linux/devfreq_cooling.h>
 #include <linux/errname.h>
@@ -28,6 +29,11 @@
 #include <linux/slab.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+
+#include <../drivers/gpu/drm/panthor/panthor_device.h>
+#include <../drivers/gpu/drm/panthor/panthor_gem.h>
+#include <../drivers/gpu/drm/panthor/panthor_mmu.h>
+#include <../drivers/gpu/drm/panthor/panthor_sched.h>
 
 /* `bindgen` gets confused at certain things. */
 const size_t RUST_CONST_HELPER_ARCH_SLAB_MINALIGN = ARCH_SLAB_MINALIGN;

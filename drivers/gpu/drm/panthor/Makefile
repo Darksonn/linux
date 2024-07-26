@@ -9,6 +9,7 @@ panthor-y := \
 	panthor_gpu.o \
 	panthor_heap.o \
 	panthor_mmu.o \
-	panthor_sched.o
+	panthor_sched.o \
+	panthor_rs.o
 
 obj-$(CONFIG_DRM_PANTHOR) += panthor.o

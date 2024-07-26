@@ -10,7 +10,11 @@ struct thermal_cooling_device;
 struct panthor_device;
 struct panthor_devfreq;
 
+extern const size_t PANTHOR_DEVFREQ_SIZEOF;
+
 int panthor_devfreq_init(struct panthor_device *ptdev);
+int panthor_devfreq_init_rust(struct panthor_devfreq *slot, struct panthor_device *ptdev, unsigned long initial_freq);
+int panthor_devfreq_cooling_register(struct panthor_devfreq *slot);
 
 int panthor_devfreq_resume(struct panthor_device *ptdev);
 int panthor_devfreq_suspend(struct panthor_device *ptdev);
