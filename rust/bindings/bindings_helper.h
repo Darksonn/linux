@@ -12,6 +12,8 @@
 #include <drm/drm_gem.h>
 #include <drm/drm_ioctl.h>
 #include <kunit/test.h>
+#include <linux/devfreq.h>
+#include <linux/devfreq_cooling.h>
 #include <linux/errname.h>
 #include <linux/ethtool.h>
 #include <linux/firmware.h>

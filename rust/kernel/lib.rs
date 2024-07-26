@@ -29,6 +29,7 @@ extern crate self as kernel;
 
 pub mod alloc;
 mod build_assert;
+pub mod devfreq;
 pub mod device;
 pub mod device_id;
 pub mod devres;
