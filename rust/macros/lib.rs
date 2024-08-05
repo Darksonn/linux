@@ -10,6 +10,7 @@ mod module;
 mod paste;
 mod pin_data;
 mod pinned_drop;
+mod preprocess;
 mod vtable;
 mod zeroable;
 
@@ -425,4 +426,10 @@ pub fn paste(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Zeroable)]
 pub fn derive_zeroable(input: TokenStream) -> TokenStream {
     zeroable::derive(input)
+}
+
+/// dox
+#[proc_macro]
+pub fn preprocess(input: TokenStream) -> TokenStream {
+    preprocess::preprocess(input)
 }

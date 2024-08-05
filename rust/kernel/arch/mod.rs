@@ -22,3 +22,5 @@ pub use self::inner::*;
 pub const fn bool_to_int(b: bool) -> i32 {
     b as i32
 }
+
+kernel::macros::preprocess!("#include <linux/jump_label.h>", "JUMP_LABEL");

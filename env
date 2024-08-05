@@ -1,0 +1,194 @@
+AFLAGS_KERNEL: 
+AFLAGS_MODULE: 
+AR: llvm-ar
+ARCH: x86
+ARCH_CORE: 
+ARCH_DRIVERS:  
+ARCH_LIB: lib/ arch/x86/lib/
+AWK: awk
+BASH: /bin/sh
+BINDGEN: bindgen
+BITS: 64
+CARGO_HOME: /home/aliceryhl/.cargo
+CC: clang
+CC_FLAGS_FPU: -msse -msse2 -D_LINUX_FPU_COMPILATION_UNIT
+CC_FLAGS_NO_FPU: 
+CFLAGS_GCOV: -fprofile-arcs -ftest-coverage
+CFLAGS_KERNEL: 
+CFLAGS_MODULE: 
+CHECK: sparse
+CHECKFLAGS: -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ -Wbitwise -Wno-return-void -Wno-unknown-attribute  -D__x86_64__ --arch=x86 -mlittle-endian -m64
+CLANG_FLAGS: --target=x86_64-linux-gnu -fintegrated-as -Werror=unknown-warning-option -Werror=ignored-optimization-argument -Werror=option-ignored -Werror=unused-command-line-argument
+CLIPPY: 1
+COLORTERM: truecolor
+CONFIG_SHELL: sh
+CPP: clang -E
+CROSS_COMPILE: 
+CVS_RSH: ssh
+DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/904054/bus
+DESKTOP_SESSION: gnome
+DISPLAY: :1
+GDMSESSION: gnome
+GDM_LANG: en_US.UTF-8
+GNOME_DESKTOP_SESSION_ID: this-is-deprecated
+GNOME_TERMINAL_SCREEN: /org/gnome/Terminal/screen/0d173c45_a5f6_40da_9b3f_310acc8ce329
+GNOME_TERMINAL_SERVICE: :1.1903
+GPG_AGENT_INFO: /run/user/904054/gnupg/S.gpg-agent:0:1
+GTK3_MODULES: xapp-gtk3-module
+GTK_MODULES: gail:atk-bridge
+HISTCONTROL: ignoredups
+HOME: /home/aliceryhl
+HOSTCC: clang
+HOSTCXX: clang++
+HOSTPKG_CONFIG: pkg-config
+HOSTRUSTC: rustc
+IM_CONFIG_PHASE: 1
+INFOPATH: /usr/share/emacs-google-config/info:
+INSTALLKERNEL: installkernel
+INSTALL_DTBS_PATH: /boot/dtbs/6.11.0-rc1+
+INSTALL_HDR_PATH: ./usr
+INSTALL_PATH: /boot
+KBUILD_AFLAGS: -D__ASSEMBLY__ -fno-PIE -m64 
+KBUILD_AFLAGS_KERNEL: 
+KBUILD_AFLAGS_MODULE: -DMODULE
+KBUILD_BUILTIN: 1
+KBUILD_CFLAGS: -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mstack-alignment=8 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -mretpoline-external-thunk -mindirect-branch-cs-prefix -mfunction-return=thunk-extern -fpatchable-function-entry=16,16 -fno-delete-null-pointer-checks -Os -fno-stack-protector -fomit-frame-pointer -ftrivial-auto-var-init=zero  -fno-stack-clash-protection -falign-functions=16  -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wmissing-declarations -Wmissing-prototypes -Wframe-larger-than=1024 -Wno-gnu -Wvla -Wno-pointer-sign  -Wcast-function-type  -Wimplicit-fallthrough -Werror=date-time -Werror=incompatible-pointer-types -Wenum-conversion -Wextra -Wunused -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-override-init  -Wno-pointer-to-enum-cast -Wno-tautological-constant-out-of-range-compare -Wno-unaligned-access -Wno-enum-compare-conditional -Wno-enum-enum-conversion -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-sign-compare -Wno-unused-parameter 
+KBUILD_CFLAGS_KERNEL: 
+KBUILD_CFLAGS_MODULE: -DMODULE
+KBUILD_CHECKSRC: 0
+KBUILD_CLIPPY: 1
+KBUILD_CPPFLAGS: -D__KERNEL__ --target=x86_64-linux-gnu -fintegrated-as -Werror=unknown-warning-option -Werror=ignored-optimization-argument -Werror=option-ignored -Werror=unused-command-line-argument -fmacro-prefix-map=./=
+KBUILD_EXTMOD: 
+KBUILD_EXTRA_WARN: 
+KBUILD_HOSTCFLAGS: -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu11   -I ./scripts/include
+KBUILD_HOSTCXXFLAGS: -Wall -O2   -I ./scripts/include
+KBUILD_HOSTLDFLAGS:  
+KBUILD_HOSTLDLIBS:  
+KBUILD_HOSTRUSTFLAGS: --edition=2021 -Zbinary_dep_depinfo=y -Dunsafe_op_in_unsafe_fn -Dnon_ascii_idents -Wrust_2018_idioms -Wunreachable_pub -Wmissing_docs -Wrustdoc::missing_crate_level_docs -Wclippy::all -Wclippy::mut_mut -Wclippy::needless_bitwise_bool -Wclippy::needless_continue -Wclippy::no_mangle_with_rust_abi -Wclippy::dbg_macro -O -Cstrip=debuginfo -Zallow-features= 
+KBUILD_IMAGE: arch/x86/boot/bzImage
+KBUILD_LDFLAGS: -m elf_x86_64 -z noexecstack
+KBUILD_LDFLAGS_MODULE: --build-id=sha1
+KBUILD_LDS: arch/x86/kernel/vmlinux.lds
+KBUILD_MODULES: 
+KBUILD_RUSTFLAGS: --edition=2021 -Zbinary_dep_depinfo=y -Dunsafe_op_in_unsafe_fn -Dnon_ascii_idents -Wrust_2018_idioms -Wunreachable_pub -Wmissing_docs -Wrustdoc::missing_crate_level_docs -Wclippy::all -Wclippy::mut_mut -Wclippy::needless_bitwise_bool -Wclippy::needless_continue -Wclippy::no_mangle_with_rust_abi -Wclippy::dbg_macro -Cpanic=abort -Cembed-bitcode=n -Clto=n -Cforce-unwind-tables=n -Ccodegen-units=1 -Csymbol-mangling-version=v0 -Crelocation-model=static -Zfunction-sections=n -Wclippy::float_arithmetic --target=./scripts/target.json -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2 -Zcf-protection=branch -Zno-jump-tables -Ztune-cpu=generic -Cno-redzone=y -Ccode-model=kernel -Copt-level=s -Cdebug-assertions=n -Coverflow-checks=y 
+KBUILD_RUSTFLAGS_KERNEL: 
+KBUILD_RUSTFLAGS_MODULE: --cfg MODULE
+KBUILD_USERCFLAGS: -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu11  -m64
+KBUILD_USERLDFLAGS: -m64
+KBUILD_VERBOSE: 
+KBUILD_VMLINUX_LIBS: lib/lib.a arch/x86/lib/lib.a
+KBZIP2: bzip2
+KCONFIG_CONFIG: .config
+KERNELRELEASE: 6.11.0-rc1+
+KERNELVERSION: 6.11.0-rc1
+KGZIP: gzip
+KLZOP: lzop
+LANG: en_US.UTF-8
+LC_COLLATE: C
+LC_NUMERIC: C
+LD: ld.lld
+LDFLAGS_MODULE: 
+LDFLAGS_vmlinux: 
+LD_LIBRARY_PATH: /home/aliceryhl/.rustup/toolchains/1.80.0-x86_64-unknown-linux-gnu/lib
+LESSCLOSE: /usr/bin/lesspipe %s %s
+LESSOPEN: | /usr/bin/lesspipe %s
+LEX: flex
+LINUXINCLUDE: -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h
+LLVM: 1
+LOGNAME: aliceryhl
+LS_COLORS: rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:
+LZ4: lz4c
+LZMA: lzma
+MAKE: make
+MAKEFLAGS: rR --no-print-directory -- obj=rust CLIPPY=1 LLVM=1
+MAKELEVEL: 3
+MAKEOVERRIDES: ${-*-command-variables-*-}
+MAKE_TERMERR: /dev/pts/3
+MAKE_TERMOUT: /dev/pts/3
+MEMORY_PRESSURE_WATCH: /sys/fs/cgroup/user.slice/user-904054.slice/user@904054.service/session.slice/org.gnome.Shell@x11.service/memory.pressure
+MEMORY_PRESSURE_WRITE: c29tZSAyMDAwMDAgMjAwMDAwMAA=
+MFLAGS: -rR --no-print-directory
+MODLIB: /lib/modules/6.11.0-rc1+
+MODORDER: modules.order
+MODULES_NSDEPS: modules.nsdeps
+NM: llvm-nm
+NOSTDINC_FLAGS: -nostdinc
+OBJCOPY: llvm-objcopy
+OBJCOPYFLAGS: 
+OBJDUMP: llvm-objdump
+OBJTREE: /home/aliceryhl/rust-for-linux
+OLDPWD: /home/aliceryhl
+P4CONFIG: .p4config
+P4MERGE: /google/src/files/head/depot/eng/perforce/mergep4.tcl
+PADDING_CFLAGS: -fpatchable-function-entry=16,16
+PAHOLE: pahole
+PARINIT: rTbgqR B=.?_A_a Q=_s>|:
+PATCHLEVEL: 11
+PATH: /home/aliceryhl/.local/bin:/home/aliceryhl/.cargo/bin:/home/aliceryhl/.local/bin:/usr/lib/google-golang/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PERL: perl
+PWD: /home/aliceryhl/rust-for-linux
+PYTHON3: python3
+PYTHONPATH: /usr/local/buildtools/current/sitecustomize
+Q: @
+QT_ACCESSIBILITY: 1
+QT_IM_MODULE: ibus
+RCS_FIND_IGNORE: \( -name SCCS -o -name BitKeeper -o -name .svn -o -name CVS -o -name .pc -o -name .hg -o -name .git \) -prune -o
+READELF: llvm-readelf
+REALMODE_CFLAGS: -std=gnu11 -m16 -g -Os -DDISABLE_BRANCH_PROFILING -D__DISABLE_EXPORTS -Wall -Wstrict-prototypes -march=i386 -mregparm=3 -fno-strict-aliasing -fomit-frame-pointer -fno-pic -mno-mmx -mno-sse -fcf-protection=none -ffreestanding -fno-stack-protector -Wno-address-of-packed-member -mstack-alignment=4 --target=x86_64-linux-gnu -fintegrated-as -Werror=unknown-warning-option -Werror=ignored-optimization-argument -Werror=option-ignored -Werror=unused-command-line-argument -Wno-gnu
+RESOLVE_BTFIDS: ./tools/bpf/resolve_btfids/resolve_btfids
+RETHUNK_CFLAGS: -mfunction-return=thunk-extern
+RETPOLINE_CFLAGS: -mretpoline-external-thunk -mindirect-branch-cs-prefix -mfunction-return=thunk-extern
+RETPOLINE_VDSO_CFLAGS: -mretpoline
+RSYNC_RSH: ssh
+RUSTC: rustc
+RUSTC_BOOTSTRAP: 1
+RUSTC_OR_CLIPPY: clippy-driver
+RUSTC_OR_CLIPPY_QUIET: CLIPPY
+RUSTDOC: rustdoc
+RUSTFLAGS_KERNEL: 
+RUSTFLAGS_MODULE: 
+RUSTFMT: rustfmt
+RUSTUP_HOME: /home/aliceryhl/.rustup
+RUSTUP_TOOLCHAIN: 1.80.0-x86_64-unknown-linux-gnu
+RUST_RECURSION_COUNT: 1
+SESSION_MANAGER: local/aliceryhl-l:@/tmp/.ICE-unix/6022,unix/aliceryhl-l:/tmp/.ICE-unix/6022
+SHELL: /bin/bash
+SHLVL: 2
+SK_SIGNING_PLUGIN: gnubbyagent
+SRCARCH: x86
+SSH_AGENT_PID: 5929
+SSH_AUTH_SOCK: /tmp/ssh-XXXXXX81SBrU/agent.5862
+STRIP: llvm-strip
+SUBLEVEL: 0
+SYSTEMD_EXEC_PID: 6060
+TERM: xterm-256color
+USER: aliceryhl
+USERNAME: aliceryhl
+UTS_MACHINE: x86_64
+VERSION: 6
+VPATH: 
+VTE_VERSION: 7592
+WINDOWPATH: 2
+XAUTHORITY: /run/user/904054/gdm/Xauthority
+XDG_CURRENT_DESKTOP: GNOME
+XDG_DATA_DIRS: /usr/share/gnome:/usr/local/share/:/usr/share/
+XDG_MENU_PREFIX: gnome-
+XDG_RUNTIME_DIR: /run/user/904054
+XDG_SESSION_CLASS: user
+XDG_SESSION_DESKTOP: gnome
+XDG_SESSION_TYPE: x11
+XMODIFIERS: @im=ibus
+XZ: xz
+YACC: bison
+ZSTD: zstd
+_: /home/aliceryhl/.cargo/bin/clippy-driver
+building_out_of_srctree: 
+cross_compiling: 
+extmod_prefix: 
+obj: rust
+objtree: .
+quiet: quiet_
+rust_common_flags: --edition=2021 -Zbinary_dep_depinfo=y -Dunsafe_op_in_unsafe_fn -Dnon_ascii_idents -Wrust_2018_idioms -Wunreachable_pub -Wmissing_docs -Wrustdoc::missing_crate_level_docs -Wclippy::all -Wclippy::mut_mut -Wclippy::needless_bitwise_bool -Wclippy::needless_continue -Wclippy::no_mangle_with_rust_abi -Wclippy::dbg_macro
+srctree: .
+sub_make_done: 1
+
