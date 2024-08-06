@@ -28,6 +28,7 @@
 #include <linux/errname.h>
 #include <linux/gfp.h>
 #include <linux/highmem.h>
+#include <linux/jump_label.h>
 #include <linux/mutex.h>
 #include <linux/refcount.h>
 #include <linux/sched/signal.h>
@@ -132,6 +133,14 @@ bool rust_helper_refcount_dec_and_test(refcount_t *r)
 	return refcount_dec_and_test(r);
 }
 EXPORT_SYMBOL_GPL(rust_helper_refcount_dec_and_test);
+
+#ifndef CONFIG_JUMP_LABEL
+int rust_helper_static_key_count(struct static_key *key)
+{
+	return static_key_count(key);
+}
+EXPORT_SYMBOL_GPL(rust_helper_static_key_count);
+#endif
 
 __force void *rust_helper_ERR_PTR(long err)
 {
