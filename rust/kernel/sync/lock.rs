@@ -117,6 +117,40 @@ impl<T, B: Backend> Lock<T, B> {
             }),
         })
     }
+
+    /// Create a global lock that has not yet been initialized.
+    ///
+    /// Since global locks is not yet fully supported, this method implements global locks by
+    /// requiring you to initialize them before you start using it. Usually this is best done in
+    /// the module's init function.
+    ///
+    /// # Safety
+    ///
+    /// You must call [`unsafe_const_init`] before calling any other method on this lock.
+    ///
+    /// [`unsafe_const_init`]: Self::unsafe_const_init
+    pub const unsafe fn unsafe_const_new(t: T) -> Self {
+        Self {
+            data: UnsafeCell::new(t),
+            state: Opaque::uninit(),
+            _pin: PhantomPinned,
+        }
+    }
+
+    /// Initialize a global lock.
+    ///
+    /// # Safety
+    ///
+    /// * This lock must have been created with [`unsafe_const_new`].
+    /// * This lock must be pinned.
+    /// * This method must not be called more than once on a given lock.
+    ///
+    /// [`unsafe_const_new`]: Self::unsafe_const_new
+    pub unsafe fn unsafe_const_init(&self, name: &'static CStr, key: &'static LockClassKey) {
+        // SAFETY: The pointer to `state` is valid for the duration of this call, and both `name`
+        // and `key` are valid indefinitely.
+        unsafe { B::init(self.state.get(), name.as_char_ptr(), key.as_ptr()) }
+    }
 }
 
 impl<T: ?Sized, B: Backend> Lock<T, B> {
