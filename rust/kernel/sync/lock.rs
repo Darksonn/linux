@@ -7,7 +7,7 @@
 
 use super::LockClassKey;
 use crate::{init::PinInit, pin_init, str::CStr, types::Opaque, types::ScopeGuard};
-use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned};
+use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, pin::Pin};
 use macros::pin_data;
 
 pub mod mutex;
@@ -116,6 +116,68 @@ impl<T, B: Backend> Lock<T, B> {
                 B::init(slot, name.as_char_ptr(), key.as_ptr())
             }),
         })
+    }
+
+    /// Create a global lock that has not yet been initialized.
+    ///
+    /// Since global locks is not yet fully supported, this method implements global locks by
+    /// requiring you to initialize them before you start using it. Usually this is best done in
+    /// the module's init function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kernel::sync::Mutex;
+    ///
+    /// // SAFETY: We initialize the mutex before first use.
+    /// static MY_MUTEX: Mutex<()> = unsafe { Mutex::unsafe_const_new(()) };
+    ///
+    /// // For the sake of this example, assume that this is the module initializer.
+    /// fn module_init() {
+    ///     // SAFETY:
+    ///     // * `MY_MUTEX` was created using `unsafe_const_new`.
+    ///     // * This call is in the module initializer, which doesn't runs more than once.
+    ///     unsafe {
+    ///         core::pin::Pin::static_ref(&MY_MUTEX)
+    ///             .unsafe_const_init(kernel::c_str!("MY_MUTEX"), kernel::static_lock_class!())
+    ///     };
+    /// }
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// You must call [`unsafe_const_init`] before calling any other method on this lock.
+    ///
+    /// [`unsafe_const_init`]: Self::unsafe_const_init
+    pub const unsafe fn unsafe_const_new(t: T) -> Self {
+        Self {
+            data: UnsafeCell::new(t),
+            state: Opaque::uninit(),
+            _pin: PhantomPinned,
+        }
+    }
+
+    /// Initialize a global lock.
+    ///
+    /// When using this to initialize a `static` lock, you can use [`Pin::static_ref`] to construct
+    /// the pinned reference.
+    ///
+    /// See the docs for [`unsafe_const_new`] for examples.
+    ///
+    /// # Safety
+    ///
+    /// * This lock must have been created with [`unsafe_const_new`].
+    /// * This method must not be called more than once on a given lock.
+    ///
+    /// [`unsafe_const_new`]: Self::unsafe_const_new
+    pub unsafe fn unsafe_const_init(
+        self: Pin<&Self>,
+        name: &'static CStr,
+        key: &'static LockClassKey,
+    ) {
+        // SAFETY: The pointer to `state` is valid for the duration of this call, and both `name`
+        // and `key` are valid indefinitely.
+        unsafe { B::init(self.state.get(), name.as_char_ptr(), key.as_ptr()) }
     }
 }
 
