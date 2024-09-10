@@ -11,6 +11,8 @@ typedef struct {
 } arch_spinlock_t;
 
 #define __ARCH_SPIN_LOCK_UNLOCKED	{ 0 }
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	unsigned char
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
 #endif /* CONFIG_QUEUED_SPINLOCKS */
 
 #ifdef CONFIG_QUEUED_RWLOCKS

@@ -49,3 +49,21 @@ mod bindings_helper {
 }
 
 pub use bindings_raw::*;
+
+mod spin_unlocked {
+    use super::{arch_spinlock_t, SPIN_UNLOCKED_RUST_HELPER};
+
+    // This will copy the first `sizeof(arch_spinlock_t)` bytes from the provided argument to make
+    // the value of `__ARCH_SPIN_LOCK_UNLOCKED`. Most of the times, the helper has the same size as
+    // `arch_spinlock_t`, but there are some exceptions.
+    //
+    // The repetition is there for arches where `arch_spinlock_t` is large. In that case, the value
+    // of the helper is repeated.
+    //
+    // SAFETY: The value is defined by the C side to be okay to transmute to `arch_spinlock_t`.
+    // 64 repetitions are enough for all arches.
+    pub const __ARCH_SPIN_LOCK_UNLOCKED: arch_spinlock_t = unsafe {
+        core::mem::transmute_copy(&[SPIN_UNLOCKED_RUST_HELPER; 64])
+    };
+}
+pub use self::spin_unlocked::__ARCH_SPIN_LOCK_UNLOCKED;

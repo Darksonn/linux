@@ -24,6 +24,8 @@ typedef struct {
 } arch_spinlock_t;
 
 #define __ARCH_SPIN_LOCK_UNLOCKED	{ { 0 } }
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	u32
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
 
 typedef struct {
 	u32 lock;

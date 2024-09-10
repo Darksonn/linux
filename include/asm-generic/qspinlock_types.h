@@ -47,6 +47,8 @@ typedef struct qspinlock {
  * Initializier
  */
 #define	__ARCH_SPIN_LOCK_UNLOCKED	{ { .val = ATOMIC_INIT(0) } }
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
 
 /*
  * Bitfields in the atomic value:

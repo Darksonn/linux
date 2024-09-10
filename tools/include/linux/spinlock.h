@@ -22,6 +22,9 @@
 
 #define arch_spinlock_t pthread_mutex_t
 #define __ARCH_SPIN_LOCK_UNLOCKED PTHREAD_MUTEX_INITIALIZER
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	char
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP_ALLOW_SIZE_MISMATCH
 
 static inline void arch_spin_lock(arch_spinlock_t *mutex)
 {

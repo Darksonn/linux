@@ -15,6 +15,13 @@ typedef struct {
 	    __ARCH_SPIN_LOCK_UNLOCKED_VAL, __ARCH_SPIN_LOCK_UNLOCKED_VAL } }
 } arch_spinlock_t;
 
+/*
+ * It's normally required that `__ARCH_SPIN_LOCK_UNLOCKED_TYP` has the same
+ * size as `arch_spinlock_t`, but we can't achieve that on parisc.
+ */
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	unsigned int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	__ARCH_SPIN_LOCK_UNLOCKED_VAL
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP_ALLOW_SIZE_MISMATCH
 
 /* counter:
  * Unlocked     : 0x0100_0000

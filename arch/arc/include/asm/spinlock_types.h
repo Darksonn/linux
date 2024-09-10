@@ -16,6 +16,9 @@ typedef struct {
 #define __ARCH_SPIN_LOCK_UNLOCKED	{ __ARCH_SPIN_LOCK_UNLOCKED__ }
 #define __ARCH_SPIN_LOCK_LOCKED		{ __ARCH_SPIN_LOCK_LOCKED__ }
 
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	unsigned int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
+
 /*
  * Unlocked     : 0x0100_0000
  * Read lock(s) : 0x00FF_FFFF to 0x01  (Multiple Readers decrement it)

@@ -11,6 +11,8 @@ typedef struct {
 } arch_spinlock_t;
 
 #define __ARCH_SPIN_LOCK_UNLOCKED { .lock = 0, }
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
 
 typedef struct {
 	int cnts;
