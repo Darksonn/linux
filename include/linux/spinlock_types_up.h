@@ -19,12 +19,18 @@ typedef struct {
 } arch_spinlock_t;
 
 #define __ARCH_SPIN_LOCK_UNLOCKED { 1 }
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	unsigned int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	1
 
 #else
 
 typedef struct { } arch_spinlock_t;
 
 #define __ARCH_SPIN_LOCK_UNLOCKED { }
+
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP	int
+#define __ARCH_SPIN_LOCK_UNLOCKED_INT	0
+#define __ARCH_SPIN_LOCK_UNLOCKED_TYP_ALLOW_SIZE_MISMATCH
 
 #endif
 
