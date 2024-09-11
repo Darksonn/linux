@@ -45,6 +45,7 @@ pub mod page;
 pub mod prelude;
 pub mod print;
 pub mod rbtree;
+pub mod shrinker;
 pub mod sizes;
 mod static_assert;
 #[doc(hidden)]
