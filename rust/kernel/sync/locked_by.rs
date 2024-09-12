@@ -83,9 +83,10 @@ pub struct LockedBy<T: ?Sized, U: ?Sized> {
 // SAFETY: `LockedBy` can be transferred across thread boundaries iff the data it protects can.
 unsafe impl<T: ?Sized + Send, U: ?Sized> Send for LockedBy<T, U> {}
 
-// SAFETY: `LockedBy` serialises the interior mutability it provides, so it is `Sync` as long as the
-// data it protects is `Send`.
-unsafe impl<T: ?Sized + Send, U: ?Sized> Sync for LockedBy<T, U> {}
+// SAFETY: Shared access to the `LockedBy` can provide both `&mut T` references in a synchronized
+// manner, or `&T` access in an unsynchronized manner. The `Send` trait is sufficient for the first
+// case, and `Sync` is sufficient for the second case.
+unsafe impl<T: ?Sized + Send + Sync, U: ?Sized> Sync for LockedBy<T, U> {}
 
 impl<T, U> LockedBy<T, U> {
     /// Constructs a new instance of [`LockedBy`].
@@ -127,7 +128,7 @@ impl<T: ?Sized, U> LockedBy<T, U> {
             panic!("mismatched owners");
         }
 
-        // SAFETY: `owner` is evidence that the owner is locked.
+        // SAFETY: `owner` is evidence that there are only shared references to the owner.
         unsafe { &*self.data.get() }
     }
 
