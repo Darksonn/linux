@@ -5,8 +5,8 @@
 //! C header: [`include/linux/sched.h`](srctree/include/linux/sched.h).
 
 use crate::ffi::{c_int, c_long, c_uint};
-use crate::types::Opaque;
-use core::{marker::PhantomData, ops::Deref, ptr};
+use crate::types::{NotThreadSafe, Opaque};
+use core::{ops::Deref, ptr};
 
 /// A sentinel value used for infinite timeouts.
 pub const MAX_SCHEDULE_TIMEOUT: c_long = c_long::MAX;
@@ -102,7 +102,7 @@ impl Task {
     pub unsafe fn current() -> impl Deref<Target = Task> {
         struct TaskRef<'a> {
             task: &'a Task,
-            _not_send: PhantomData<*mut ()>,
+            _not_send: NotThreadSafe,
         }
 
         impl Deref for TaskRef<'_> {
@@ -121,7 +121,7 @@ impl Task {
             // that `TaskRef` is not `Send`, we know it cannot be transferred to another thread
             // (where it could potentially outlive the caller).
             task: unsafe { &*ptr.cast() },
-            _not_send: PhantomData,
+            _not_send: NotThreadSafe,
         }
     }
 
