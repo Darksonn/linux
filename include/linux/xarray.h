@@ -532,29 +532,48 @@ static inline bool xa_marked(const struct xarray *xa, xa_mark_t mark)
 	for (index = 0, entry = xa_find(xa, &index, ULONG_MAX, filter); \
 	     entry; entry = xa_find_after(xa, &index, ULONG_MAX, filter))
 
-#define xa_trylock(xa)		spin_trylock(&(xa)->xa_lock)
-#define xa_lock(xa)		spin_lock(&(xa)->xa_lock)
-#define xa_unlock(xa)		spin_unlock(&(xa)->xa_lock)
-#define xa_lock_bh(xa)		spin_lock_bh(&(xa)->xa_lock)
-#define xa_unlock_bh(xa)	spin_unlock_bh(&(xa)->xa_lock)
-#define xa_lock_irq(xa)		spin_lock_irq(&(xa)->xa_lock)
-#define xa_unlock_irq(xa)	spin_unlock_irq(&(xa)->xa_lock)
-#define xa_lock_irqsave(xa, flags) \
+#define xa_tryenter(xa)		spin_trylock(&(xa)->xa_lock)
+#define xa_enter(xa)		spin_lock(&(xa)->xa_lock)
+#define xa_leave(xa)		spin_unlock(&(xa)->xa_lock)
+#define xa_enter_bh(xa)		spin_lock_bh(&(xa)->xa_lock)
+#define xa_leave_bh(xa)		spin_unlock_bh(&(xa)->xa_lock)
+#define xa_enter_irq(xa)	spin_lock_irq(&(xa)->xa_lock)
+#define xa_leave_irq(xa)	spin_unlock_irq(&(xa)->xa_lock)
+#define xa_enter_irqsave(xa, flags) \
 				spin_lock_irqsave(&(xa)->xa_lock, flags)
-#define xa_unlock_irqrestore(xa, flags) \
+#define xa_leave_irqrestore(xa, flags) \
 				spin_unlock_irqrestore(&(xa)->xa_lock, flags)
-#define xa_lock_nested(xa, subclass) \
+#define xa_enter_nested(xa, subclass) \
 				spin_lock_nested(&(xa)->xa_lock, subclass)
-#define xa_lock_bh_nested(xa, subclass) \
+#define xa_enter_bh_nested(xa, subclass) \
 				spin_lock_bh_nested(&(xa)->xa_lock, subclass)
-#define xa_lock_irq_nested(xa, subclass) \
+#define xa_enter_irq_nested(xa, subclass) \
 				spin_lock_irq_nested(&(xa)->xa_lock, subclass)
-#define xa_lock_irqsave_nested(xa, flags, subclass) \
+#define xa_enter_irqsave_nested(xa, flags, subclass) \
 		spin_lock_irqsave_nested(&(xa)->xa_lock, flags, subclass)
 
 /*
- * Versions of the normal API which require the caller to hold the
- * xa_lock.  If the GFP flags allow it, they will drop the lock to
+ * These names are deprecated. Please use xa_enter instead of xa_lock, and
+ * xa_leave instead of xa_unlock.
+ */
+#define xa_trylock(xa)			xa_tryenter(xa)
+#define xa_lock(xa)			xa_enter(xa)
+#define xa_unlock(xa)			xa_leave(xa)
+#define xa_lock_bh(xa)			xa_enter_bh(xa)
+#define xa_unlock_bh(xa)		xa_leave_bh(xa)
+#define xa_lock_irq(xa)			xa_enter_irq(xa)
+#define xa_unlock_irq(xa)		xa_leave_irq(xa)
+#define xa_lock_irqsave(xa, flags)	xa_enter_irqsave(xa, flags)
+#define xa_unlock_irqrestore(xa, flags) xa_leave_irqsave(xa, flags)
+#define xa_lock_nested(xa, subclass)	xa_enter_nested(xa, subclass)
+#define xa_lock_bh_nested(xa, subclass) xa_enter_bh_nested(xa, subclass)
+#define xa_lock_irq_nested(xa, subclass) xa_enter_irq_nested(xa, subclass)
+#define xa_lock_irqsave_nested(xa, flags, subclass) \
+		xa_enter_irqsave_nested(xa, flags, subclass)
+
+/*
+ * Versions of the normal API which require the caller to use
+ * xa_enter.  If the GFP flags allow it, they will drop the lock to
  * allocate memory, then reacquire it afterwards.  These functions
  * may also re-enable interrupts if the XArray flags indicate the
  * locking should be interrupt safe.
@@ -592,9 +611,9 @@ static inline void *xa_store_bh(struct xarray *xa, unsigned long index,
 	void *curr;
 
 	might_alloc(gfp);
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	curr = __xa_store(xa, index, entry, gfp);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return curr;
 }
@@ -619,9 +638,9 @@ static inline void *xa_store_irq(struct xarray *xa, unsigned long index,
 	void *curr;
 
 	might_alloc(gfp);
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	curr = __xa_store(xa, index, entry, gfp);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return curr;
 }
@@ -643,9 +662,9 @@ static inline void *xa_erase_bh(struct xarray *xa, unsigned long index)
 {
 	void *entry;
 
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	entry = __xa_erase(xa, index);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return entry;
 }
@@ -667,9 +686,9 @@ static inline void *xa_erase_irq(struct xarray *xa, unsigned long index)
 {
 	void *entry;
 
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	entry = __xa_erase(xa, index);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return entry;
 }
@@ -695,9 +714,9 @@ static inline void *xa_cmpxchg(struct xarray *xa, unsigned long index,
 	void *curr;
 
 	might_alloc(gfp);
-	xa_lock(xa);
+	xa_enter(xa);
 	curr = __xa_cmpxchg(xa, index, old, entry, gfp);
-	xa_unlock(xa);
+	xa_leave(xa);
 
 	return curr;
 }
@@ -723,9 +742,9 @@ static inline void *xa_cmpxchg_bh(struct xarray *xa, unsigned long index,
 	void *curr;
 
 	might_alloc(gfp);
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	curr = __xa_cmpxchg(xa, index, old, entry, gfp);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return curr;
 }
@@ -751,9 +770,9 @@ static inline void *xa_cmpxchg_irq(struct xarray *xa, unsigned long index,
 	void *curr;
 
 	might_alloc(gfp);
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	curr = __xa_cmpxchg(xa, index, old, entry, gfp);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return curr;
 }
@@ -781,9 +800,9 @@ static inline int __must_check xa_insert(struct xarray *xa,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock(xa);
+	xa_enter(xa);
 	err = __xa_insert(xa, index, entry, gfp);
-	xa_unlock(xa);
+	xa_leave(xa);
 
 	return err;
 }
@@ -811,9 +830,9 @@ static inline int __must_check xa_insert_bh(struct xarray *xa,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	err = __xa_insert(xa, index, entry, gfp);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return err;
 }
@@ -841,9 +860,9 @@ static inline int __must_check xa_insert_irq(struct xarray *xa,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	err = __xa_insert(xa, index, entry, gfp);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return err;
 }
@@ -874,9 +893,9 @@ static inline __must_check int xa_alloc(struct xarray *xa, u32 *id,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock(xa);
+	xa_enter(xa);
 	err = __xa_alloc(xa, id, entry, limit, gfp);
-	xa_unlock(xa);
+	xa_leave(xa);
 
 	return err;
 }
@@ -907,9 +926,9 @@ static inline int __must_check xa_alloc_bh(struct xarray *xa, u32 *id,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	err = __xa_alloc(xa, id, entry, limit, gfp);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return err;
 }
@@ -940,9 +959,9 @@ static inline int __must_check xa_alloc_irq(struct xarray *xa, u32 *id,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	err = __xa_alloc(xa, id, entry, limit, gfp);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return err;
 }
@@ -977,9 +996,9 @@ static inline int xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock(xa);
+	xa_enter(xa);
 	err = __xa_alloc_cyclic(xa, id, entry, limit, next, gfp);
-	xa_unlock(xa);
+	xa_leave(xa);
 
 	return err;
 }
@@ -1014,9 +1033,9 @@ static inline int xa_alloc_cyclic_bh(struct xarray *xa, u32 *id, void *entry,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_bh(xa);
+	xa_enter_bh(xa);
 	err = __xa_alloc_cyclic(xa, id, entry, limit, next, gfp);
-	xa_unlock_bh(xa);
+	xa_leave_bh(xa);
 
 	return err;
 }
@@ -1051,9 +1070,9 @@ static inline int xa_alloc_cyclic_irq(struct xarray *xa, u32 *id, void *entry,
 	int err;
 
 	might_alloc(gfp);
-	xa_lock_irq(xa);
+	xa_enter_irq(xa);
 	err = __xa_alloc_cyclic(xa, id, entry, limit, next, gfp);
-	xa_unlock_irq(xa);
+	xa_leave_irq(xa);
 
 	return err;
 }
@@ -1408,17 +1427,30 @@ struct xa_state {
 			(1U << (order % XA_CHUNK_SHIFT)) - 1)
 
 #define xas_marked(xas, mark)	xa_marked((xas)->xa, (mark))
-#define xas_trylock(xas)	xa_trylock((xas)->xa)
-#define xas_lock(xas)		xa_lock((xas)->xa)
-#define xas_unlock(xas)		xa_unlock((xas)->xa)
-#define xas_lock_bh(xas)	xa_lock_bh((xas)->xa)
-#define xas_unlock_bh(xas)	xa_unlock_bh((xas)->xa)
-#define xas_lock_irq(xas)	xa_lock_irq((xas)->xa)
-#define xas_unlock_irq(xas)	xa_unlock_irq((xas)->xa)
-#define xas_lock_irqsave(xas, flags) \
-				xa_lock_irqsave((xas)->xa, flags)
-#define xas_unlock_irqrestore(xas, flags) \
-				xa_unlock_irqrestore((xas)->xa, flags)
+#define xas_tryenter(xas)	xa_tryenter((xas)->xa)
+#define xas_enter(xas)		xa_enter((xas)->xa)
+#define xas_leave(xas)		xa_leave((xas)->xa)
+#define xas_enter_bh(xas)	xa_enter_bh((xas)->xa)
+#define xas_leave_bh(xas)	xa_leave_bh((xas)->xa)
+#define xas_enter_irq(xas)	xa_enter_irq((xas)->xa)
+#define xas_leave_irq(xas)	xa_leave_irq((xas)->xa)
+#define xas_enter_irqsave(xas, flags) xa_enter_irqsave((xas)->xa, flags)
+#define xas_leave_irqrestore(xas, flags) xa_leave_irqrestore((xas)->xa, flags)
+
+
+/*
+ * These names are deprecated. Please use xas_enter instead of xas_lock, and
+ * xas_leave instead of xas_unlock.
+ */
+#define xas_trylock(xas)			xas_tryenter(xas)
+#define xas_lock(xas)				xas_enter(xas)
+#define xas_unlock(xas)				xas_leave(xas)
+#define xas_lock_bh(xas)			xas_enter_bh(xas)
+#define xas_unlock_bh(xas)			xas_leave_bh(xas)
+#define xas_lock_irq(xas)			xas_enter_irq(xas)
+#define xas_unlock_irq(xas)			xas_leave_irq(xas)
+#define xas_lock_irqsave(xas, flags)		xas_enter_irqsave(xas, flags)
+#define xas_unlock_irqrestore(xas, flags)	xas_leave_irqsave(xas, flags)
 
 /**
  * xas_error() - Return an errno stored in the xa_state.

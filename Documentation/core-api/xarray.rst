@@ -200,7 +200,7 @@ Takes RCU read lock:
  * xa_extract()
  * xa_get_mark()
 
-Takes xa_lock internally:
+Internally calls xa_enter to lock spinlock:
  * xa_store()
  * xa_store_bh()
  * xa_store_irq()
@@ -224,7 +224,7 @@ Takes xa_lock internally:
  * xa_set_mark()
  * xa_clear_mark()
 
-Assumes xa_lock held on entry:
+Caller must use xa_enter:
  * __xa_store()
  * __xa_insert()
  * __xa_erase()
@@ -233,14 +233,41 @@ Assumes xa_lock held on entry:
  * __xa_set_mark()
  * __xa_clear_mark()
 
-If you want to take advantage of the lock to protect the data structures
-that you are storing in the XArray, you can call xa_lock()
-before calling xa_load(), then take a reference count on the
-object you have found before calling xa_unlock().  This will
-prevent stores from removing the object from the array between looking
-up the object and incrementing the refcount.  You can also use RCU to
-avoid dereferencing freed memory, but an explanation of that is beyond
-the scope of this document.
+Variants of xa_enter and xa_leave:
+ * xa_enter()
+ * xa_tryenter()
+ * xa_enter_bh()
+ * xa_enter_irq()
+ * xa_enter_irqsave()
+ * xa_enter_nested()
+ * xa_enter_bh_nested()
+ * xa_enter_irq_nested()
+ * xa_enter_irqsave_nested()
+ * xa_leave()
+ * xa_leave_bh()
+ * xa_leave_irq()
+ * xa_leave_irqrestore()
+
+The xa_enter() and xa_leave() functions correspond to spin_lock() and
+spin_unlock() on the internal spinlock.  Be aware that functions such as
+__xa_store() may temporarily unlock the internal spinlock to allocate memory.
+Because of that, if you have several calls to __xa_store() between a single
+xa_enter()/xa_leave() pair, other users of the XArray may see the first store
+without seeing the second store.  The xa_enter() function is not called xa_lock()
+to emphasize this distinction.
+
+If you want to take advantage of the lock to protect the data stored in the
+XArray, then you can use xa_enter() and xa_leave() to enter and leave the
+critical region of the internal spinlock. For example, you can enter the critcal
+region with xa_enter(), look up a value with xa_load(), increment the refcount,
+and then call xa_leave().  This will prevent stores from removing the object
+from the array between looking up the object and incrementing the refcount.
+
+Instead of xa_enter(), you can also use RCU to increment the refcount, but an
+explanation of that is beyond the scope of this document.
+
+Interrupts
+----------
 
 The XArray does not disable interrupts or softirqs while modifying
 the array.  It is safe to read the XArray from interrupt or softirq
@@ -258,21 +285,21 @@ context and then erase them in softirq context, you can do that this way::
     {
         int err;
 
-        xa_lock_bh(&foo->array);
+        xa_enter_bh(&foo->array);
         err = xa_err(__xa_store(&foo->array, index, entry, GFP_KERNEL));
         if (!err)
             foo->count++;
-        xa_unlock_bh(&foo->array);
+        xa_leave_bh(&foo->array);
         return err;
     }
 
     /* foo_erase() is only called from softirq context */
     void foo_erase(struct foo *foo, unsigned long index)
     {
-        xa_lock(&foo->array);
+        xa_enter(&foo->array);
         __xa_erase(&foo->array, index);
         foo->count--;
-        xa_unlock(&foo->array);
+        xa_leave(&foo->array);
     }
 
 If you are going to modify the XArray from interrupt or softirq context,
@@ -280,12 +307,12 @@ you need to initialise the array using xa_init_flags(), passing
 ``XA_FLAGS_LOCK_IRQ`` or ``XA_FLAGS_LOCK_BH``.
 
 The above example also shows a common pattern of wanting to extend the
-coverage of the xa_lock on the store side to protect some statistics
-associated with the array.
+coverage of the internal spinlock on the store side to protect some
+statistics associated with the array.
 
 Sharing the XArray with interrupt context is also possible, either
-using xa_lock_irqsave() in both the interrupt handler and process
-context, or xa_lock_irq() in process context and xa_lock()
+using xa_enter_irqsave() in both the interrupt handler and process
+context, or xa_enter_irq() in process context and xa_enter()
 in the interrupt handler.  Some of the more common patterns have helper
 functions such as xa_store_bh(), xa_store_irq(),
 xa_erase_bh(), xa_erase_irq(), xa_cmpxchg_bh()
@@ -293,8 +320,8 @@ and xa_cmpxchg_irq().
 
 Sometimes you need to protect access to the XArray with a mutex because
 that lock sits above another mutex in the locking hierarchy.  That does
-not entitle you to use functions like __xa_erase() without taking
-the xa_lock; the xa_lock is used for lockdep validation and will be used
+not entitle you to use functions like __xa_erase() without calling
+xa_enter; the XArray lock is used for lockdep validation and will be used
 for other purposes in the future.
 
 The __xa_set_mark() and __xa_clear_mark() functions are also
@@ -308,8 +335,8 @@ Advanced API
 The advanced API offers more flexibility and better performance at the
 cost of an interface which can be harder to use and has fewer safeguards.
 No locking is done for you by the advanced API, and you are required
-to use the xa_lock while modifying the array.  You can choose whether
-to use the xa_lock or the RCU lock while doing read-only operations on
+to use xa_enter while modifying the array.  You can choose whether
+to use xa_enter or the RCU lock while doing read-only operations on
 the array.  You can mix advanced and normal operations on the same array;
 indeed the normal API is implemented in terms of the advanced API.  The
 advanced API is only available to modules with a GPL-compatible license.
@@ -320,8 +347,8 @@ This macro initialises the xa_state ready to start walking around the
 XArray.  It is used as a cursor to maintain the position in the XArray
 and let you compose various operations together without having to restart
 from the top every time.  The contents of the xa_state are protected by
-the rcu_read_lock() or the xas_lock().  If you need to drop whichever of
-those locks is protecting your state and tree, you must call xas_pause()
+the rcu_read_lock() or the xas_enter() lock.  If you need to drop whichever
+of those locks is protecting your state and tree, you must call xas_pause()
 so that future calls do not rely on the parts of the state which were
 left unprotected.
 
