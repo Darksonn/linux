@@ -333,6 +333,26 @@ impl LocalFile {
         // FIXME(read_once): Replace with `read_once` when available on the Rust side.
         unsafe { core::ptr::addr_of!((*self.as_ptr()).f_flags).read_volatile() }
     }
+
+    /// Read the file position.
+    ///
+    /// # Safety
+    ///
+    /// You must hold the fpos lock or otherwise ensure that no data race will happen.
+    #[inline]
+    pub unsafe fn f_pos(&self) -> i64 {
+        unsafe { (*self.as_ptr()).f_pos }
+    }
+
+    /// Set the file position.
+    ///
+    /// # Safety
+    ///
+    /// You must hold the fpos lock or otherwise ensure that no data race will happen.
+    #[inline]
+    pub unsafe fn set_f_pos(&self, value: i64) {
+        unsafe { (*self.as_ptr()).f_pos = value };
+    }
 }
 
 impl File {
