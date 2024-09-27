@@ -44,6 +44,7 @@ endif
 ifdef CONFIG_DYNAMIC_FTRACE
 KBUILD_CPPFLAGS += -DCC_USING_PATCHABLE_FUNCTION_ENTRY
 CC_FLAGS_FTRACE := -fpatchable-function-entry=2
+KBUILD_RUSTFLAGS += $(call rustc-option,-Zpatchable-function-entry=2)
 endif
 
 ifdef CONFIG_64BIT
