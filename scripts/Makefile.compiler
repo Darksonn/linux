@@ -21,6 +21,7 @@ TMPOUT = $(if $(KBUILD_EXTMOD),$(firstword $(KBUILD_EXTMOD))/).tmp_$$$$
 # automatically cleaned up.
 try-run = $(shell set -e;		\
 	TMP=$(TMPOUT)/tmp;		\
+	export RUSTC_BOOTSTRAP=1;	\
 	trap "rm -rf $(TMPOUT)" EXIT;	\
 	mkdir -p $(TMPOUT);		\
 	if ($(1)) >/dev/null 2>&1;	\
@@ -76,7 +77,7 @@ ld-option = $(call try-run, $(LD) $(KBUILD_LDFLAGS) $(1) -v,$(1),$(2),$(3))
 # __rustc-option
 # Usage: MY_RUSTFLAGS += $(call __rustc-option,$(RUSTC),$(MY_RUSTFLAGS),-Cinstrument-coverage,-Zinstrument-coverage)
 __rustc-option = $(call try-run,\
-	$(1) $(2) $(3) --crate-type=rlib /dev/null --out-dir=$$TMPOUT -o "$$TMP",$(3),$(4))
+	$(1) $(2) $(3) --crate-type=rlib $(srctree)/rust/probe.rs --out-dir=$$TMP,$(3),$(4))
 
 # rustc-option
 # Usage: rustflags-y += $(call rustc-option,-Cinstrument-coverage,-Zinstrument-coverage)
@@ -86,4 +87,4 @@ rustc-option = $(call __rustc-option, $(RUSTC),\
 # rustc-option-yn
 # Usage: flag := $(call rustc-option-yn,-Cinstrument-coverage)
 rustc-option-yn = $(call try-run,\
-	$(RUSTC) $(KBUILD_RUSTFLAGS) $(1) --crate-type=rlib /dev/null --out-dir=$$TMPOUT -o "$$TMP",y,n)
+	$(RUSTC) $(KBUILD_RUSTFLAGS) $(1) --crate-type=rlib $(srctree)/rust/probe.rs --out-dir=$$TMP,y,n)
