@@ -21,6 +21,7 @@ TMPOUT = $(if $(KBUILD_EXTMOD),$(firstword $(KBUILD_EXTMOD))/).tmp_$$$$
 # automatically cleaned up.
 try-run = $(shell set -e;		\
 	TMP=$(TMPOUT)/tmp;		\
+	RUSTC_BOOTSTRAP=1;		\
 	trap "rm -rf $(TMPOUT)" EXIT;	\
 	mkdir -p $(TMPOUT);		\
 	if ($(1)) >/dev/null 2>&1;	\
