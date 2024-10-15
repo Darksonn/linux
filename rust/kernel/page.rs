@@ -20,6 +20,11 @@ pub const PAGE_SIZE: usize = bindings::PAGE_SIZE;
 /// A bitmask that gives the page containing a given address.
 pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
 
+/// Round up the given number to a multiple of `PAGE_SIZE`.
+pub fn page_align(addr: usize) -> usize {
+    (addr + (PAGE_SIZE - 1)) & PAGE_MASK
+}
+
 /// A pointer to a page that owns the page allocation.
 ///
 /// # Invariants
