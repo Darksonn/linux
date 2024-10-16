@@ -489,17 +489,21 @@ impl<T: ?Sized + ListItem<ID>, const ID: u64> List<T, ID> {
         other.first = ptr::null_mut();
     }
 
-    /// Returns a cursor to the first element of the list.
-    ///
-    /// If the list is empty, this returns `None`.
-    pub fn cursor_front(&mut self) -> Option<Cursor<'_, T, ID>> {
-        if self.first.is_null() {
-            None
-        } else {
-            Some(Cursor {
-                current: self.first,
-                list: self,
-            })
+    /// Returns a cursor that points before the first element of the list.
+    pub fn cursor_front(&mut self) -> Cursor<'_, T, ID> {
+        // INVARIANT: `self.first` is in this list.
+        Cursor {
+            next: self.first,
+            list: self,
+        }
+    }
+
+    /// Returns a cursor that points after the last element in the list.
+    pub fn cursor_back(&mut self) -> Cursor<'_, T, ID> {
+        // INVARIANT: `next` is allowed to be null.
+        Cursor {
+            next: core::ptr::null_mut(),
+            list: self,
         }
     }
 
@@ -579,19 +583,51 @@ impl<'a, T: ?Sized + ListItem<ID>, const ID: u64> Iterator for Iter<'a, T, ID> {
 
 /// A cursor into a [`List`].
 ///
+/// A cursor always rests between two elements in the list. This means that a cursor has a previous
+/// and next element, but no current element. It also means that it's possible to have a cursor
+/// into an empty list.
+///
 /// # Invariants
 ///
-/// The `current` pointer points a value in `list`.
+/// The `current` pointer is null or points a value in `list`.
 pub struct Cursor<'a, T: ?Sized + ListItem<ID>, const ID: u64 = 0> {
-    current: *mut ListLinksFields,
     list: &'a mut List<T, ID>,
+    /// Points at the element after this cursor, or null if the cursor is after the last element.
+    next: *mut ListLinksFields,
 }
 
 impl<'a, T: ?Sized + ListItem<ID>, const ID: u64> Cursor<'a, T, ID> {
-    /// Access the current element of this cursor.
-    pub fn current(&self) -> ArcBorrow<'_, T> {
-        // SAFETY: The `current` pointer points a value in the list.
-        let me = unsafe { T::view_value(ListLinks::from_fields(self.current)) };
+    /// Returns a pointer to the element before the cursor.
+    ///
+    /// Returns null if there is no element before the cursor.
+    fn prev_ptr(&self) -> *mut ListLinksFields {
+        let mut next = self.next;
+        let first = self.list.first;
+        if next == first {
+            // We are before the first element.
+            return core::ptr::null_mut();
+        }
+
+        if next.is_null() {
+            // We are after the last element, so we need a pointer to the last element, which is
+            // the same as `(*first).prev`.
+            next = first;
+        }
+
+        // SAFETY: `next` can't be null, because then `first` must also be null, but in that case
+        // we would have exited at the `next == first` check. Thus, `next` is an element in the
+        // list, so we can access its `prev` pointer.
+        unsafe { (*next).prev }
+    }
+
+    /// Access the element after this cursor.
+    pub fn peek_next(&self) -> Option<ArcBorrow<'_, T>> {
+        if self.next.is_null() {
+            return None;
+        }
+
+        // SAFETY: Since it is not null, the `self.next` pointer points a value in the list.
+        let me = unsafe { T::view_value(ListLinks::from_fields(self.next)) };
         // SAFETY:
         // * All values in a list are stored in an `Arc`.
         // * The value cannot be removed from the list for the duration of the lifetime annotated
@@ -601,47 +637,95 @@ impl<'a, T: ?Sized + ListItem<ID>, const ID: u64> Cursor<'a, T, ID> {
         //   mutable access requires first releasing the immutable borrow on the cursor.
         // * Values in a list never have a `UniqueArc` reference, because the list has a `ListArc`
         //   reference, and `UniqueArc` references must be unique.
-        unsafe { ArcBorrow::from_raw(me) }
+        unsafe { Some(ArcBorrow::from_raw(me)) }
     }
 
-    /// Move the cursor to the next element.
-    pub fn next(self) -> Option<Cursor<'a, T, ID>> {
-        // SAFETY: The `current` field is always in a list.
-        let next = unsafe { (*self.current).next };
+    /// Access the element before this cursor.
+    pub fn peek_prev(&self) -> Option<ArcBorrow<'_, T>> {
+        let prev = self.prev_ptr();
+        if prev.is_null() {
+            return None;
+        }
+
+        // SAFETY: Since it is not null, the `prev` pointer points a value in the list.
+        let me = unsafe { T::view_value(ListLinks::from_fields(prev)) };
+        // SAFETY:
+        // * All values in a list are stored in an `Arc`.
+        // * The value cannot be removed from the list for the duration of the lifetime annotated
+        //   on the returned `ArcBorrow`, because removing it from the list would require mutable
+        //   access to the cursor or the list. However, the `ArcBorrow` holds an immutable borrow
+        //   on the cursor, which in turn holds a mutable borrow on the list, so any such
+        //   mutable access requires first releasing the immutable borrow on the cursor.
+        // * Values in a list never have a `UniqueArc` reference, because the list has a `ListArc`
+        //   reference, and `UniqueArc` references must be unique.
+        unsafe { Some(ArcBorrow::from_raw(me)) }
+    }
+
+    /// Move the cursor one element forward.
+    ///
+    /// If the cursor is after the last element, then the cursor will move back to the beginning.
+    pub fn move_next(&mut self) {
+        if self.next.is_null() {
+            // INVARIANT: `list.first` is in the list or null.
+            self.next = self.list.first;
+            return;
+        }
+
+        // SAFETY: `self.next` is an element in the list and we borrow the list mutably, so we can
+        // access the `next` field.
+        let mut next = unsafe { (*self.next).next };
 
         if next == self.list.first {
-            None
-        } else {
-            // INVARIANT: Since `self.current` is in the `list`, its `next` pointer is also in the
-            // `list`.
-            Some(Cursor {
-                current: next,
-                list: self.list,
-            })
+            next = core::ptr::null_mut();
         }
+
+        // INVARIANT: `next` is either null or the next element after an element in the list.
+        self.next = next;
     }
 
-    /// Move the cursor to the previous element.
-    pub fn prev(self) -> Option<Cursor<'a, T, ID>> {
-        // SAFETY: The `current` field is always in a list.
-        let prev = unsafe { (*self.current).prev };
-
-        if self.current == self.list.first {
-            None
-        } else {
-            // INVARIANT: Since `self.current` is in the `list`, its `prev` pointer is also in the
-            // `list`.
-            Some(Cursor {
-                current: prev,
-                list: self.list,
-            })
+    /// Move the cursor one element backwards.
+    ///
+    /// If the cursor is before the first element, then the cursor will move to the end of the
+    /// list.
+    pub fn move_prev(&mut self) {
+        if self.next == self.list.first {
+            // We are before the first element, so move the cursor after the last element.
+            // INVARIANT: `next` can be a null pointer.
+            self.next = core::ptr::null_mut();
+            return;
         }
+
+        // INVARIANT: `prev_ptr()` always returns a pointer that is null or in the list.
+        self.next = self.prev_ptr();
     }
 
-    /// Remove the current element from the list.
-    pub fn remove(self) -> ListArc<T, ID> {
-        // SAFETY: The `current` pointer always points at a member of the list.
-        unsafe { self.list.remove_internal(self.current) }
+    /// Remove the next element from the list.
+    pub fn remove_next(&mut self) -> Option<ListArc<T, ID>> {
+        let to_remove = self.next;
+        if to_remove.is_null() {
+            return None;
+        }
+
+        self.move_next();
+
+        // INVARIANT: `self.move_next()` always changes `self.next`, so the new value of
+        // `self.next` is still in the list after this call.
+        // SAFETY: The `next` pointer points at a member of the list.
+        Some(unsafe { self.list.remove_internal(to_remove) })
+    }
+
+    /// Remove the previous element from the list.
+    pub fn remove_prev(&mut self) -> Option<ListArc<T, ID>> {
+        let prev = self.prev_ptr();
+
+        if prev.is_null() {
+            return None;
+        }
+
+        // INVARIANT: if `self.prev_ptr()` is non-null, it never returns `self.next`, so
+        // `self.next` is still in the list after this call.
+        // SAFETY: The `prev` pointer points at a member of the list.
+        Some(unsafe { self.list.remove_internal(prev) })
     }
 }
 
