@@ -225,6 +225,18 @@ if [ "$bindgen_libclang_cversion" -lt "$bindgen_libclang_min_cversion" ]; then
 	exit 1
 fi
 
+if [ "$bindgen_libclang_cversion" -ge 190100 ] && [ "$rust_bindings_generator_cversion" -lt 7000 ]; then
+	echo >&2 "***"
+	echo >&2 "*** You're using libclang version 19.1+ together with a version of the"
+	echo >&2 "*** Rust bindings generator '$BINDGEN' from before version 0.70. This"
+	echo >&2 "*** combination has a known bug that may lead to build failures."
+	echo >&2 "*** (https://github.com/rust-lang/rust-bindgen/pull/2824)"
+	echo >&2 "***   Your bindgen version:  $rust_bindings_generator_version"
+	echo >&2 "***   Your libclang version: $bindgen_libclang_version"
+	echo >&2 "***"
+	warning=1
+fi
+
 # If the C compiler is Clang, then we can also check whether its version
 # matches the `libclang` version used by the Rust bindings generator.
 #
