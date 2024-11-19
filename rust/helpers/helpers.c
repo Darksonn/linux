@@ -15,6 +15,7 @@
 #include "err.c"
 #include "fs.c"
 #include "kunit.c"
+#include "mm.c"
 #include "mutex.c"
 #include "page.c"
 #include "rbtree.c"
