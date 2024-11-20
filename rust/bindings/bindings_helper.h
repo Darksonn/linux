@@ -25,6 +25,10 @@
 #include <linux/workqueue.h>
 #include <trace/events/rust_sample.h>
 
+#ifdef CONFIG_SAMPLE_TRACE_EVENTS_MODULE
+#include "../../samples/trace_events/trace-events-sample.h"
+#endif
+
 /* `bindgen` gets confused at certain things. */
 const size_t RUST_CONST_HELPER_ARCH_SLAB_MINALIGN = ARCH_SLAB_MINALIGN;
 const size_t RUST_CONST_HELPER_PAGE_SIZE = PAGE_SIZE;

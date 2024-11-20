@@ -7,9 +7,17 @@
  * But only one file, must include the header by defining
  * CREATE_TRACE_POINTS first.  This will make the C code that
  * creates the handles for the trace points.
+ *
+ * If you want to invoke any of the tracepoints from Rust,
+ * you must also define CREATE_RUST_TRACE_POINTS.
  */
 #define CREATE_TRACE_POINTS
+#define CREATE_RUST_TRACE_POINTS
 #include "trace-events-sample.h"
+
+#ifdef CONFIG_RUST
+void trigger_tracepoint_from_rust(int cnt);
+#endif
 
 static const char *random_strings[] = {
 	"Mother Goose",
@@ -51,6 +59,10 @@ static void do_simple_thread_func(int cnt, const char *fmt, ...)
 	trace_foo_with_template_print("I have to be different", cnt);
 
 	trace_foo_rel_loc("Hello __rel_loc", cnt, bitmask, current->cpus_ptr);
+
+#ifdef CONFIG_RUST
+	trigger_tracepoint_from_rust(cnt);
+#endif
 }
 
 static void simple_thread_func(int cnt)

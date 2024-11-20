@@ -13,5 +13,8 @@
 CFLAGS_trace-events-sample.o := -I$(src)
 CFLAGS_trace_custom_sched.o := -I$(src)
 
-obj-$(CONFIG_SAMPLE_TRACE_EVENTS) += trace-events-sample.o
+obj-$(CONFIG_SAMPLE_TRACE_EVENTS) += trace-events-sample-full.o
 obj-$(CONFIG_SAMPLE_TRACE_CUSTOM_EVENTS) += trace_custom_sched.o
+
+trace-events-sample-full-y := trace-events-sample.o
+trace-events-sample-full-$(CONFIG_RUST) += trace_events_sample_rust.o
