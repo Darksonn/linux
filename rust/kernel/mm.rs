@@ -142,28 +142,6 @@ impl Deref for MmWithUserAsync {
 
 // These methods are safe to call even if `mm_users` is zero.
 impl Mm {
-    /// Call `mmgrab` on `current.mm`.
-    #[inline]
-    pub fn mmgrab_current() -> Option<ARef<Mm>> {
-        // SAFETY: It's safe to get the `mm` field from current.
-        let mm = unsafe {
-            let current = bindings::get_current();
-            (*current).mm
-        };
-
-        if mm.is_null() {
-            return None;
-        }
-
-        // SAFETY: The value of `current->mm` is guaranteed to be null or a valid `mm_struct`. We
-        // just checked that it's not null. Furthermore, the returned `&Mm` is valid only for the
-        // duration of this function, and `current->mm` will stay valid for that long.
-        let mm = unsafe { Mm::from_raw(mm) };
-
-        // This increments the refcount using `mmgrab`.
-        Some(ARef::from(mm))
-    }
-
     /// Returns a raw pointer to the inner `mm_struct`.
     #[inline]
     pub fn as_raw(&self) -> *mut bindings::mm_struct {
