@@ -94,6 +94,26 @@ unsafe impl Send for Task {}
 // synchronised by C code (e.g., `signal_pending`).
 unsafe impl Sync for Task {}
 
+/// Represents a [`Task`] obtained from the `current` global.
+///
+/// This type exists to provide more efficient operations that are only valid on the current task.
+/// For example, to retrieve the pid-namespace of a task, you must use rcu protection unless it is
+/// the current task.
+///
+/// # Invariants
+///
+/// Must be equal to `current` of some thread that is currently running somewhere.
+pub struct CurrentTask(Task);
+
+// Make all `Task` methods available on `CurrentTask`.
+impl Deref for CurrentTask {
+    type Target = Task;
+    #[inline]
+    fn deref(&self) -> &Task {
+        &self.0
+    }
+}
+
 /// The type of process identifiers (PIDs).
 type Pid = bindings::pid_t;
 
@@ -121,27 +141,25 @@ impl Task {
     /// # Safety
     ///
     /// Callers must ensure that the returned object doesn't outlive the current task/thread.
-    pub unsafe fn current() -> impl Deref<Target = Task> {
-        struct TaskRef<'a> {
-            task: &'a Task,
-            _not_send: NotThreadSafe,
+    pub unsafe fn current() -> impl Deref<Target = CurrentTask> {
+        struct TaskRef {
+            task: *const CurrentTask,
         }
 
-        impl Deref for TaskRef<'_> {
-            type Target = Task;
+        impl Deref for TaskRef {
+            type Target = CurrentTask;
 
             fn deref(&self) -> &Self::Target {
-                self.task
+                // SAFETY: The returned reference borrows from this `TaskRef`, so it cannot outlive
+                // the `TaskRef`, which the caller of `Task::current()` has promised will not
+                // outlive the task/thread for which `self.task` is the `current` pointer. Thus, it
+                // is okay to return a `CurrentTask` reference here.
+                unsafe { &*self.task }
             }
         }
 
-        let current = Task::current_raw();
         TaskRef {
-            // SAFETY: If the current thread is still running, the current task is valid. Given
-            // that `TaskRef` is not `Send`, we know it cannot be transferred to another thread
-            // (where it could potentially outlive the caller).
-            task: unsafe { &*current.cast() },
-            _not_send: NotThreadSafe,
+            task: Task::current_raw().cast(),
         }
     }
 
@@ -200,6 +218,26 @@ impl Task {
         // SAFETY: It's always safe to call `signal_pending` on a valid task, even if the task
         // running.
         unsafe { bindings::wake_up_process(self.as_ptr()) };
+    }
+}
+
+impl CurrentTask {
+    /// Access the address space of this task.
+    ///
+    /// To increment the refcount of the referenced `mm`, you can use `ARef::from`.
+    #[inline]
+    pub fn mm(&self) -> Option<&MmWithUser> {
+        let mm = unsafe { (*self.as_ptr()).mm };
+
+        if mm.is_null() {
+            None
+        } else {
+            // SAFETY: If `current->mm` is non-null, then it references a valid mm with a non-zero
+            // value of `mm_users`. The returned `&MmWithUser` borrows from `CurrentTask`, so the
+            // `&MmWithUser` cannot escape the current task, meaning `mm_users` can't reach zero
+            // while the reference is still live.
+            Some(unsafe { MmWithUser::from_raw(mm) })
+        }
     }
 }
 
