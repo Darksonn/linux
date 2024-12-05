@@ -159,6 +159,17 @@ impl<T: ?Sized, B: Backend> Lock<T, B> {
 /// Allows mutual exclusion primitives that implement the [`Backend`] trait to automatically unlock
 /// when a guard goes out of scope. It also provides a safe and convenient way to access the data
 /// protected by the lock.
+///
+/// This guard may be released and reacquired with [`do_unlocked`]. Note that this implies that
+/// this `Guard` type is _not_ stable, that is, holding this lock is not sufficient to keep the
+/// underlying [`Lock`] alive. That must be done by some other mechanism such as a refcount or
+/// ownership.
+///
+/// # Invariants
+///
+/// This `Guard` owns the lock as defined by the [`Backend`] trait.
+///
+/// [`do_unlocked`]: Guard::do_unlocked
 #[must_use = "the lock unlocks immediately when the guard is unused"]
 pub struct Guard<'a, T: ?Sized, B: Backend> {
     pub(crate) lock: &'a Lock<T, B>,
