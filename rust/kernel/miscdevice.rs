@@ -104,7 +104,7 @@ pub trait MiscDevice {
     /// Called when the misc device is opened.
     ///
     /// The returned pointer will be stored as the private data for the file.
-    fn open(_file: &File) -> Result<Self::Ptr>;
+    fn open(_file: &File, _misc: &MiscDeviceRegistration<Self>) -> Result<Self::Ptr>;
 
     /// Called when the misc device is released.
     fn release(device: Self::Ptr, _file: &File) {
@@ -190,14 +190,27 @@ unsafe extern "C" fn fops_open<T: MiscDevice>(
         return ret;
     }
 
+    // SAFETY: The opwn call of a file can access the private data.
+    let misc_ptr = unsafe { (*file).private_data };
+    // SAFETY: This is a miscdevice, so `misc_open()` set the private data to a pointer to the
+    // associated `struct miscdevice` before calling into this method. Furthermore, `misc_open()`
+    // ensures that the miscdevice can't be unregistered and freed during this call to `fops_open`.
+    let misc = unsafe { &*misc_ptr.cast::<MiscDeviceRegistration<T>>() };
+
     // SAFETY:
-    // * The file is valid for the duration of this call.
+    // * The file is valid for the duration of the `T::open` call.
     // * There is no active fdget_pos region on the file on this thread.
-    let ptr = match T::open(unsafe { File::from_raw_file(file) }) {
+    let file = unsafe { File::from_raw_file(file) };
+
+    let ptr = match T::open(file, misc) {
         Ok(ptr) => ptr,
         Err(err) => return err.to_errno(),
     };
 
+    // This overwrites the private data from above. It makes sense to not hold on to the misc
+    // pointer since the `struct miscdevice` can get unregistered as soon as we return from this
+    // call, so the misc pointer might be dangling on future file operations.
+    //
     // SAFETY: The open call of a file owns the private data.
     unsafe { (*file).private_data = ptr.into_foreign().cast_mut() };
 
