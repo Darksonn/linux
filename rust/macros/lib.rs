@@ -9,6 +9,7 @@
 #[macro_use]
 mod quote;
 mod concat_idents;
+mod export;
 mod helpers;
 mod module;
 mod paste;
@@ -172,6 +173,23 @@ pub fn module(ts: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn vtable(attr: TokenStream, ts: TokenStream) -> TokenStream {
     vtable::vtable(attr, ts)
+}
+
+/// Export a function so that C code can call it.
+///
+/// This macro has the following effect:
+///
+/// * Disables name mangling for this function.
+/// * Verifies at compile-time that the function signature matches what's in the header file.
+///
+/// This macro requires that the function is mentioned in a C header file, and that the header file
+/// is included in `rust/bindings/bindings_helper.h`.
+///
+/// This macro is *not* the same as the C macro `EXPORT_SYMBOL*`, since all Rust symbols are
+/// currently automatically exported with `EXPORT_SYMBOL_GPL`.
+#[proc_macro_attribute]
+pub fn export(attr: TokenStream, ts: TokenStream) -> TokenStream {
+    export::export(attr, ts)
 }
 
 /// Concatenate two identifiers.
