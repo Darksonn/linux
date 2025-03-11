@@ -395,6 +395,33 @@ where
         (ptr, len, capacity)
     }
 
+    /// Clears the vector, removing all values.
+    ///
+    /// Note that this method has no effect on the allocated capacity
+    /// of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut v = kernel::kvec![1, 2, 3]?;
+    ///
+    /// v.clear();
+    ///
+    /// assert!(v.is_empty());
+    /// # Ok::<(), Error>(())
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        let elems: *mut [T] = self.as_mut_slice();
+
+        // INVARIANT: This call changes the number of elements to zero.
+        self.len = 0;
+
+        // SAFETY: The values being dropped are valid values of type `T` by the type invariants.
+        // It's okay to invalidate them as we just changed the length to zero.
+        unsafe { ptr::drop_in_place(elems) };
+    }
+
     /// Ensures that the capacity exceeds the length by at least `additional` elements.
     ///
     /// # Examples
