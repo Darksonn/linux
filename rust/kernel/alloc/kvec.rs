@@ -564,6 +564,30 @@ where
         //   len, therefore we have exclusive access to [`new_len`, `old_len`)
         unsafe { ptr::drop_in_place(ptr) };
     }
+
+    /// Takes ownership of all items in this vector without consuming the allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut v = kernel::kvec![0, 1, 2, 3]?;
+    ///
+    /// for (i, j) in v.drain_all().enumerate() {
+    ///     assert_eq!(i, j);
+    /// }
+    ///
+    /// assert!(v.capacity() >= 4);
+    /// ```
+    pub fn drain_all(&mut self) -> DrainAll<'_, T> {
+        let len = self.len();
+        // INVARIANT: The first 0 elements are valid.
+        self.len = 0;
+        // INVARIANT: The first `len` elements of the spare capacity are valid values, and as we
+        // just set the length to zero, we may transfer ownership to the `DrainAll` object.
+        DrainAll {
+            elements: self.spare_capacity_mut()[..len].iter_mut(),
+        }
+    }
 }
 
 impl<T: Clone, A: Allocator> Vec<T, A> {
@@ -1046,6 +1070,39 @@ where
             len,
             layout,
             _p: PhantomData::<A>,
+        }
+    }
+}
+
+/// An iterator that owns all items in a vector, but does not own its allocation.
+///
+/// # Invariants
+///
+/// Every `&mut MaybeUninit<T>` returned by the iterator contains a valid `T` owned by this
+/// `DrainAll`.
+pub struct DrainAll<'vec, T> {
+    elements: slice::IterMut<'vec, MaybeUninit<T>>,
+}
+
+impl<'vec, T> Iterator for DrainAll<'vec, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        let elem = self.elements.next()?;
+        // SAFETY: By the type invariants, we may take ownership of the value in this
+        // `MaybeUninit<T>`.
+        Some(unsafe { elem.assume_init_read() })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.elements.size_hint()
+    }
+}
+
+impl<'vec, T> Drop for DrainAll<'vec, T> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<T>() {
+            while self.next().is_some() {}
         }
     }
 }
