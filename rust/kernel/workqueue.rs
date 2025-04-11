@@ -186,7 +186,7 @@
 //! C header: [`include/linux/workqueue.h`](srctree/include/linux/workqueue.h)
 
 use crate::{
-    alloc::{AllocError, Flags},
+    alloc::{self, AllocError},
     container_of,
     prelude::*,
     sync::Arc,
@@ -194,7 +194,11 @@ use crate::{
     time::Jiffies,
     types::Opaque,
 };
-use core::marker::PhantomData;
+use core::{
+    marker::PhantomData,
+    ops::Deref,
+    ptr::NonNull, //
+};
 
 /// Creates a [`Work`] initialiser with the given name and a newly-created lock class.
 #[macro_export]
@@ -333,7 +337,7 @@ impl Queue {
     /// This method can fail because it allocates memory to store the work item.
     pub fn try_spawn<T: 'static + Send + FnOnce()>(
         &self,
-        flags: Flags,
+        flags: alloc::Flags,
         func: T,
     ) -> Result<(), AllocError> {
         let init = pin_init!(ClosureWork {
@@ -343,6 +347,181 @@ impl Queue {
 
         self.enqueue(KBox::pin_init(init, flags).map_err(|_| AllocError)?);
         Ok(())
+    }
+}
+
+/// Workqueue flags.
+///
+/// A valid combination of workqueue flags contains one of the base flags (`WQ_UNBOUND`, `WQ_BH`,
+/// or `WQ_PERCPU`) and a combination of modifier flags that are compatible with the selected base
+/// flag.
+///
+/// For details, please refer to `Documentation/core-api/workqueue.rst`.
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+pub struct Flags<const BH: bool>(bindings::wq_flags);
+
+// BH only methods
+impl Flags<true> {
+    /// Execute in bottom half (softirq) context.
+    #[inline]
+    pub const fn bh() -> Flags<true> {
+        Flags(bindings::wq_flags_WQ_BH)
+    }
+}
+
+// Non-BH only methods
+impl Flags<false> {
+    /// Not bound to any cpu.
+    #[inline]
+    pub const fn unbound() -> Flags<false> {
+        Flags(bindings::wq_flags_WQ_UNBOUND)
+    }
+
+    /// Bound to a specific cpu.
+    #[inline]
+    pub const fn percpu() -> Flags<false> {
+        Flags(bindings::wq_flags_WQ_PERCPU)
+    }
+
+    /// Allow this workqueue to be frozen during suspend.
+    #[inline]
+    pub const fn freezable(self) -> Self {
+        Flags(self.0 | bindings::wq_flags_WQ_FREEZABLE)
+    }
+
+    /// This workqueue may be used during memory reclaim.
+    #[inline]
+    pub const fn mem_reclaim(self) -> Self {
+        Flags(self.0 | bindings::wq_flags_WQ_MEM_RECLAIM)
+    }
+
+    /// Mark this workqueue as cpu intensive.
+    #[inline]
+    pub const fn cpu_intensive(self) -> Self {
+        Flags(self.0 | bindings::wq_flags_WQ_CPU_INTENSIVE)
+    }
+
+    /// Make this workqueue visible in sysfs.
+    #[inline]
+    pub const fn sysfs(self) -> Self {
+        Flags(self.0 | bindings::wq_flags_WQ_SYSFS)
+    }
+}
+
+// Methods for BH and non-BH.
+impl<const BH: bool> Flags<BH> {
+    /// High priority workqueue.
+    #[inline]
+    pub const fn highpri(self) -> Self {
+        Flags(self.0 | bindings::wq_flags_WQ_HIGHPRI)
+    }
+}
+
+/// An owned kernel work queue.
+///
+/// Dropping a workqueue blocks on all pending work.
+///
+/// # Invariants
+///
+/// `queue` points at a valid workqueue that is owned by this `OwnedQueue`.
+pub struct OwnedQueue {
+    queue: NonNull<Queue>,
+}
+
+#[expect(clippy::manual_c_str_literals)]
+impl OwnedQueue {
+    /// Allocates a new workqueue.
+    ///
+    /// The provided name is used verbatim as the workqueue name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kernel::c_str;
+    /// use kernel::workqueue::{OwnedQueue, Flags};
+    ///
+    /// let wq = OwnedQueue::new(c_str!("my-wq"), Flags::unbound().sysfs(), 0)?;
+    /// wq.try_spawn(
+    ///     GFP_KERNEL,
+    ///     || pr_warn!("Printing from my-wq"),
+    /// )?;
+    /// # Ok::<(), Error>(())
+    /// ```
+    #[inline]
+    pub fn new<const BH: bool>(
+        name: &CStr,
+        flags: Flags<BH>,
+        max_active: usize,
+    ) -> Result<OwnedQueue, AllocError> {
+        // SAFETY:
+        // * "%s\0" is compatible with passing the name as a c-string.
+        // * the flags argument does not include internal flags.
+        let ptr = unsafe {
+            bindings::alloc_workqueue(
+                b"%s\0".as_ptr(),
+                flags.0,
+                i32::try_from(max_active).unwrap_or(i32::MAX),
+                name.as_char_ptr().cast::<c_void>(),
+            )
+        };
+
+        Ok(OwnedQueue {
+            queue: NonNull::new(ptr).ok_or(AllocError)?.cast(),
+        })
+    }
+
+    /// Allocates a new workqueue.
+    ///
+    /// # Examples
+    ///
+    /// This example shows how to pass a Rust string formatter to the workqueue name, creating
+    /// workqueues with names such as `my-wq-1` and `my-wq-2`.
+    ///
+    /// ```
+    /// use kernel::alloc::AllocError;
+    /// use kernel::workqueue::{OwnedQueue, Flags};
+    ///
+    /// fn my_wq(num: u32) -> Result<OwnedQueue, AllocError> {
+    ///     OwnedQueue::new_fmt(format_args!("my-wq-{num}"), Flags::percpu(), 0)
+    /// }
+    /// ```
+    #[inline]
+    pub fn new_fmt<const BH: bool>(
+        name: core::fmt::Arguments<'_>,
+        flags: Flags<BH>,
+        max_active: usize,
+    ) -> Result<OwnedQueue, AllocError> {
+        // SAFETY:
+        // * "%pA\0" is compatible with passing an `Arguments` pointer.
+        // * the flags argument does not include internal flags.
+        let ptr = unsafe {
+            bindings::alloc_workqueue(
+                b"%pA\0".as_ptr(),
+                flags.0,
+                i32::try_from(max_active).unwrap_or(i32::MAX),
+                core::ptr::from_ref(&name).cast::<c_void>(),
+            )
+        };
+
+        Ok(OwnedQueue {
+            queue: NonNull::new(ptr).ok_or(AllocError)?.cast(),
+        })
+    }
+}
+
+impl Deref for OwnedQueue {
+    type Target = Queue;
+    fn deref(&self) -> &Queue {
+        // SAFETY: By the type invariants, this pointer references a valid queue.
+        unsafe { &*self.queue.as_ptr() }
+    }
+}
+
+impl Drop for OwnedQueue {
+    fn drop(&mut self) {
+        // SAFETY: The `OwnedQueue` is being destroyed, so we can destroy the workqueue it owns.
+        unsafe { bindings::destroy_workqueue(self.queue.as_ptr().cast()) }
     }
 }
 
