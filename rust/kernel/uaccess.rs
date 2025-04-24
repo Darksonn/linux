@@ -8,7 +8,7 @@ use crate::{
     alloc::{Allocator, Flags},
     bindings,
     error::Result,
-    ffi::c_void,
+    ffi::{c_char, c_void},
     prelude::*,
     transmute::{AsBytes, FromBytes},
 };
@@ -368,4 +368,36 @@ impl UserSliceWriter {
         self.length -= len;
         Ok(())
     }
+}
+
+/// Reads a nul-terminated string into `buf` and returns the length.
+///
+/// This reads from userspace until a NUL byte is encountered, or until `buf.len()` bytes have been
+/// read. Fails with [`EFAULT`] if a read happens on a bad address. When the end of the buffer is
+/// encountered, no NUL byte is added, so the string is *not* guaranteed to be NUL-terminated when
+/// `Ok(buf.len())` is returned.
+///
+/// # Guarantees
+///
+/// When this function returns `Ok(len)`, it is guaranteed that the first `len` of `buf` bytes are
+/// initialized and non-zero. Furthermore, if `len < buf.len()`, then `buf[len]` is a NUL byte.
+/// Unsafe code may rely on these guarantees.
+#[inline]
+pub fn raw_strncpy_from_user(ptr: UserPtr, buf: &mut [MaybeUninit<u8>]) -> Result<usize> {
+    // CAST: Slice lengths are guaranteed to be `<= isize::MAX`.
+    let len = buf.len() as isize;
+
+    // SAFETY: `buf` is valid for writing `buf.len()` bytes.
+    let res = unsafe {
+        bindings::strncpy_from_user(buf.as_mut_ptr().cast::<c_char>(), ptr as *const c_char, len)
+    };
+
+    if res < 0 {
+        return Err(Error::from_errno(res as i32));
+    }
+
+    #[cfg(CONFIG_RUST_OVERFLOW_CHECKS)]
+    assert!(res <= len);
+
+    Ok(res as usize)
 }
