@@ -369,3 +369,30 @@ impl UserSliceWriter {
         Ok(())
     }
 }
+
+/// Reads a nul-terminated string into `buf` and returns the length.
+///
+/// Fails with [`EFAULT`] if the read happens on a bad address. If the end of `buf` is reached,
+/// then the buffer will not be nul-terminated.
+#[inline]
+pub fn strncpy_from_user(ptr: UserPtr, buf: &mut [u8]) -> Result<usize> {
+    // CAST: Slice lengths are guaranteed to be `<= isize::MAX`.
+    let len = buf.len() as isize;
+
+    // SAFETY: `buf` is valid for writing `buf.len()` bytes.
+    let res = unsafe {
+        bindings::strncpy_from_user(
+            buf.as_mut_ptr(),
+            ptr as *const u8,
+            len,
+        )
+    };
+
+    if res < 0 {
+        Err(Error::from_errno(res as i32))
+    } else {
+        #[cfg(CONFIG_RUST_OVERFLOW_CHECKS)]
+        assert!(res <= len);
+        Ok(res as usize)
+    }
+}
