@@ -107,7 +107,7 @@ use kernel::{
     prelude::*,
     sync::Mutex,
     types::ARef,
-    uaccess::{UserSlice, UserSliceReader, UserSliceWriter},
+    uaccess::{UserPtr, UserSlice, UserSliceReader, UserSliceWriter},
 };
 
 const RUST_MISC_DEV_HELLO: u32 = _IO('|' as u32, 0x80);
@@ -176,6 +176,8 @@ impl MiscDevice for RustMiscDevice {
     fn ioctl(me: Pin<&RustMiscDevice>, _file: &File, cmd: u32, arg: usize) -> Result<isize> {
         dev_info!(me.dev, "IOCTLing Rust Misc Device Sample\n");
 
+        // Treat the ioctl argument as a user pointer.
+        let arg = UserPtr(arg);
         let size = _IOC_SIZE(cmd);
 
         match cmd {
