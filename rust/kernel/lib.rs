@@ -197,9 +197,25 @@ impl ThisModule {
 #[cfg(not(any(testlib, test)))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    pr_emerg!("{}\n", info);
-    // SAFETY: FFI call.
-    unsafe { bindings::BUG() };
+    use ffi::*;
+
+    let (file, file_len, line) = match info.location() {
+        Some(location) => {
+            let file = location.file();
+            (file.as_ptr(), file.len() as c_int, location.line() as c_int)
+        }
+        None => (core::ptr::null(), 0, 0),
+    };
+
+    match core::format_args!("{}", info.message()) {
+        args => {
+            let args = (&args) as *const core::fmt::Arguments<'_> as *mut c_void;
+            // SAFETY: FFI call.
+            unsafe { bindings::rust_panic(file, file_len, line, args) };
+        }
+    }
+
+    loop {}
 }
 
 /// Produces a pointer to an object from a pointer to one of its fields.
