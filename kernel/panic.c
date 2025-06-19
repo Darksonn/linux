@@ -830,6 +830,24 @@ void __warn_printk(const char *fmt, ...)
 EXPORT_SYMBOL(__warn_printk);
 #endif
 
+#ifdef CONFIG_RUST
+void rust_panic(const char *file, int file_len, int line, void *message)
+{
+	pr_emerg(CUT_HERE);
+	nbcon_cpu_emergency_enter();
+	disable_trace_on_warning();
+	if (file)
+		pr_emerg("RUST PANIC: CPU: %d PID: %d at %.*s:%d\n",
+			raw_smp_processor_id(), current->pid,
+			file_len, file, line);
+	else
+		pr_emerg("RUST PANIC: CPU: %d PID: %d\n",
+			raw_smp_processor_id(), current->pid);
+	panic("%pA\n", message);
+}
+EXPORT_SYMBOL(rust_panic);
+#endif
+
 /* Support resetting WARN*_ONCE state */
 
 static int clear_warn_once_set(void *data, u64 val)
