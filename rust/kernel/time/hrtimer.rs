@@ -148,7 +148,7 @@ impl<T> HrTimer<T> {
         // SAFETY: The field projection to `timer` does not go out of bounds,
         // because the caller of this function promises that `this` points to an
         // allocation of at least the size of `Self`.
-        unsafe { Opaque::raw_get(core::ptr::addr_of!((*this).timer)) }
+        unsafe { Opaque::cast_into(core::ptr::addr_of!((*this).timer)) }
     }
 
     /// Cancel an initialized and potentially running timer.
@@ -172,7 +172,7 @@ impl<T> HrTimer<T> {
     /// `this` must point to a valid `Self`.
     pub(crate) unsafe fn raw_cancel(this: *const Self) -> bool {
         // SAFETY: `this` points to an allocation of at least `HrTimer` size.
-        let c_timer_ptr = unsafe { HrTimer::raw_get(this) };
+        let c_timer_ptr = unsafe { HrTimer::cast_into(this) };
 
         // If the handler is running, this will wait for the handler to return
         // before returning.
