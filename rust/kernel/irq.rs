@@ -16,4 +16,7 @@ pub mod flags;
 /// IRQ allocation and handling.
 pub mod request;
 
-pub use request::{Handler, IrqRequest, IrqReturn, Registration};
+pub use request::{
+    Handler, IrqRequest, IrqReturn, Registration, ThreadedHandler, ThreadedIrqReturn,
+    ThreadedRegistration,
+};
