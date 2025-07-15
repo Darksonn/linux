@@ -400,12 +400,19 @@ where
 }
 
 // SAFETY: The pointer returned by `into_foreign` comes from a well aligned
-// pointer to `T`.
+// pointer to `T` allocated by `A`.
 unsafe impl<T: 'static, A> ForeignOwnable for Box<T, A>
 where
     A: Allocator,
 {
-    const FOREIGN_ALIGN: usize = core::mem::align_of::<T>();
+    const FOREIGN_ALIGN: usize = {
+        let mut align = core::mem::align_of::<T>();
+        if align < A::MIN_ALIGN {
+            align = A::MIN_ALIGN;
+        }
+        align
+    };
+
     type Borrowed<'a> = &'a T;
     type BorrowedMut<'a> = &'a mut T;
 
@@ -434,12 +441,12 @@ where
 }
 
 // SAFETY: The pointer returned by `into_foreign` comes from a well aligned
-// pointer to `T`.
+// pointer to `T` allocated by `A`.
 unsafe impl<T: 'static, A> ForeignOwnable for Pin<Box<T, A>>
 where
     A: Allocator,
 {
-    const FOREIGN_ALIGN: usize = core::mem::align_of::<T>();
+    const FOREIGN_ALIGN: usize = <Box<T, A> as ForeignOwnable>::FOREIGN_ALIGN;
     type Borrowed<'a> = Pin<&'a T>;
     type BorrowedMut<'a> = Pin<&'a mut T>;
 
