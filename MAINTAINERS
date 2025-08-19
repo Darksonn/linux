@@ -14674,6 +14674,16 @@ F:	lib/test_maple_tree.c
 F:	tools/testing/radix-tree/maple.c
 F:	tools/testing/shared/linux/maple_tree.h
 
+MAPLE TREE [RUST]
+M:	Liam R. Howlett <Liam.Howlett@oracle.com>
+M:	Alice Ryhl <aliceryhl@google.com>
+L:	maple-tree@lists.infradead.org
+L:	linux-mm@kvack.org
+L:	rust-for-linux@vger.kernel.org
+S:	Supported
+F:	rust/helpers/maple_tree.c
+F:	rust/kernel/maple_tree.rs
+
 MARDUK (CREATOR CI40) DEVICE TREE SUPPORT
 M:	Rahul Bedarkar <rahulbedarkar89@gmail.com>
 L:	linux-mips@vger.kernel.org
