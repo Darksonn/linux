@@ -2,6 +2,7 @@
 
 //! Implements the `AsBytes` derive macro.
 
+
 use proc_macro::{TokenStream, TokenTree, Delimiter};
 use std::iter::Peekable;
 
@@ -104,32 +105,32 @@ pub(crate) fn as_bytes_derive(ts: TokenStream) -> TokenStream {
     let (name, generics, where_clause) = parse_struct_def(&mut tokens);
     let fields = parse_fields(&mut tokens);
 
-    let generics_str = generics.into_iter().map(|t| t.to_string()).collect::<String>();
-    let where_clause_str = where_clause.into_iter().map(|t| t.to_string()).collect::<String>();
+    let generics_ts: TokenStream = generics.into_iter().collect();
+    let where_clause_ts: TokenStream = where_clause.into_iter().collect();
 
-    let mut new_where_clause = where_clause_str;
-    if !fields.is_empty() {
-        if new_where_clause.is_empty() {
-            new_where_clause.push_str(" where ");
-        } else {
-            new_where_clause.push_str(", ");
+    let mut new_where_clause = TokenStream::new();
+    if !fields.is_empty() || !where_clause_ts.is_empty() {
+        new_where_clause.extend(quote!(where));
+    }
+
+    if !where_clause_ts.is_empty() {
+        new_where_clause.extend(where_clause_ts);
+        if !fields.is_empty() {
+            new_where_clause.extend(quote!(,));
         }
     }
 
-    let field_clauses = fields.into_iter().map(|f| {
-        let type_str = f.into_iter().map(|t| t.to_string()).collect::<String>();
-        format!("for<'a> {}: ::ffi::AsBytes", type_str)
-    }).collect::<Vec<_>>().join(", ");
+    let mut first = true;
+    for field in fields {
+        if !first {
+            new_where_clause.extend(quote!(,));
+        }
+        let field_ts: TokenStream = field.into_iter().collect();
+        new_where_clause.extend(quote!(for<'a> #field_ts: ::ffi::AsBytes));
+        first = false;
+    }
 
-    new_where_clause.push_str(&field_clauses);
-
-    let generated = format!(
-        "unsafe impl<{}> ::ffi::AsBytes for {}<{}> {} {{}}",
-        generics_str,
-        name,
-        generics_str,
-        new_where_clause,
-    );
-
-    generated.parse().expect("Failed to parse generated code")
+    quote! {
+        unsafe impl<#generics_ts> ::ffi::AsBytes for #name<#generics_ts> #new_where_clause {}
+    }
 }

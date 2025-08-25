@@ -2,7 +2,7 @@
 
 //! Implements the `FromBytes` derive macro.
 
-use crate::quote;
+
 use proc_macro::{TokenStream, TokenTree, Delimiter};
 use std::iter::Peekable;
 
