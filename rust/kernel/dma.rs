@@ -8,8 +8,8 @@ use crate::{
     bindings, build_assert, device,
     device::{Bound, Core},
     error::{to_result, Result},
+    ffi::{AsBytes, FromBytes},
     prelude::*,
-    transmute::{AsBytes, FromBytes},
     types::ARef,
 };
 
@@ -579,9 +579,9 @@ unsafe impl<T: AsBytes + FromBytes + Send> Send for CoherentAllocation<T> {}
 /// struct MyStruct { field: u32, }
 ///
 /// // SAFETY: All bit patterns are acceptable values for `MyStruct`.
-/// unsafe impl kernel::transmute::FromBytes for MyStruct{};
+/// unsafe impl kernel::ffi::FromBytes for MyStruct{};
 /// // SAFETY: Instances of `MyStruct` have no uninitialized portions.
-/// unsafe impl kernel::transmute::AsBytes for MyStruct{};
+/// unsafe impl kernel::ffi::AsBytes for MyStruct{};
 ///
 /// # fn test(alloc: &kernel::dma::CoherentAllocation<MyStruct>) -> Result {
 /// let whole = kernel::dma_read!(alloc[2]);
@@ -623,9 +623,9 @@ macro_rules! dma_read {
 /// struct MyStruct { member: u32, }
 ///
 /// // SAFETY: All bit patterns are acceptable values for `MyStruct`.
-/// unsafe impl kernel::transmute::FromBytes for MyStruct{};
+/// unsafe impl kernel::ffi::FromBytes for MyStruct{};
 /// // SAFETY: Instances of `MyStruct` have no uninitialized portions.
-/// unsafe impl kernel::transmute::AsBytes for MyStruct{};
+/// unsafe impl kernel::ffi::AsBytes for MyStruct{};
 ///
 /// # fn test(alloc: &kernel::dma::CoherentAllocation<MyStruct>) -> Result {
 /// kernel::dma_write!(alloc[2].member = 0xf);

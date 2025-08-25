@@ -8,9 +8,8 @@ use crate::{
     alloc::{Allocator, Flags},
     bindings,
     error::Result,
-    ffi::{c_char, c_void},
+    ffi::{c_char, c_void, AsBytes, FromBytes},
     prelude::*,
-    transmute::{AsBytes, FromBytes},
 };
 use core::mem::{size_of, MaybeUninit};
 
