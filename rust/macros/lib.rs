@@ -15,6 +15,7 @@
 mod quote;
 mod concat_idents;
 mod export;
+mod from_bytes;
 mod helpers;
 mod kunit;
 mod module;
@@ -424,4 +425,14 @@ pub fn paste(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn kunit_tests(attr: TokenStream, ts: TokenStream) -> TokenStream {
     kunit::kunit_tests(attr, ts)
+}
+
+/// A derive macro for the `FromBytes` trait.
+///
+/// This macro should only be used on structs that are safe to create from any
+/// byte pattern. See the documentation for the `FromBytes` trait for more
+/// information.
+#[proc_macro_derive(FromBytes)]
+pub fn from_bytes_derive(ts: TokenStream) -> TokenStream {
+    from_bytes::from_bytes_derive(ts)
 }
