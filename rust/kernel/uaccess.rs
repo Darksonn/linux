@@ -290,6 +290,29 @@ impl UserSliceReader {
     ///
     /// Fails with [`EFAULT`] if the read happens on a bad address, or if the read goes out of
     /// bounds of this [`UserSliceReader`].
+    ///
+    /// # Examples
+    ///
+    /// Reading a struct that implements `FromBytes`.
+    ///
+    /// ```no_run
+    /// # use kernel::uaccess::{UserPtr, UserSlice};
+    /// # use kernel::error::Result;
+    /// # use kernel::macros::FromBytes;
+    ///
+    /// #[derive(FromBytes, PartialEq, Debug)]
+    /// struct MyUapiStruct {
+    ///     a: u32,
+    ///     b: u64,
+    /// }
+    ///
+    /// fn read_my_struct(ptr: UserPtr) -> Result<MyUapiStruct> {
+    ///     let mut reader = UserSlice::new(ptr, core::mem::size_of::<MyUapiStruct>()).reader();
+    ///     let val = reader.read::<MyUapiStruct>()?;
+    ///     pr_info!("Read struct: a={}, b={}\n", val.a, val.b);
+    ///     Ok(val)
+    /// }
+    /// ```
     pub fn read<T: FromBytes>(&mut self) -> Result<T> {
         let len = size_of::<T>();
         if len > self.length {
