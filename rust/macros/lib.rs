@@ -13,6 +13,7 @@
 
 #[macro_use]
 mod quote;
+mod as_bytes;
 mod concat_idents;
 mod export;
 mod from_bytes;
@@ -435,4 +436,14 @@ pub fn kunit_tests(attr: TokenStream, ts: TokenStream) -> TokenStream {
 #[proc_macro_derive(FromBytes)]
 pub fn from_bytes_derive(ts: TokenStream) -> TokenStream {
     from_bytes::from_bytes_derive(ts)
+}
+
+/// A derive macro for the `AsBytes` trait.
+///
+/// This macro should only be used on structs that are safe to view as a slice
+/// of bytes. See the documentation for the `AsBytes` trait for more
+/// information.
+#[proc_macro_derive(AsBytes)]
+pub fn as_bytes_derive(ts: TokenStream) -> TokenStream {
+    as_bytes::as_bytes_derive(ts)
 }

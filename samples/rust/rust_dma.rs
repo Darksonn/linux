@@ -8,7 +8,7 @@ use kernel::{
     bindings,
     device::Core,
     dma::{CoherentAllocation, Device, DmaMask},
-    macros::FromBytes,
+    macros::{AsBytes, FromBytes},
     pci,
     prelude::*,
     types::ARef,
@@ -27,7 +27,7 @@ const TEST_VALUES: [(u32, u32); 5] = [
     (0xcd, 0xef),
 ];
 
-#[derive(FromBytes)]
+#[derive(AsBytes, FromBytes)]
 struct MyStruct {
     h: u32,
     b: u32,
@@ -38,8 +38,6 @@ impl MyStruct {
         Self { h, b }
     }
 }
-// SAFETY: All bit patterns are acceptable values for `MyStruct`.
-unsafe impl kernel::ffi::AsBytes for MyStruct {}
 
 kernel::pci_device_table!(
     PCI_TABLE,
