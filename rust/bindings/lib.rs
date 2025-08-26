@@ -24,6 +24,8 @@
     unsafe_op_in_unsafe_fn
 )]
 
+use macros::{MaybeAsBytes, MaybeFromBytes};
+
 #[allow(dead_code)]
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::ptr_as_ptr)]

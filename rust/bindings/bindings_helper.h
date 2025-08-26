@@ -6,6 +6,11 @@
  * Sorted alphabetically.
  */
 
+#error "This is a generated file, do not edit"
+use macros::{MaybeAsBytes, MaybeFromBytes};
+
+
+
 /*
  * First, avoid forward references to `enum` types.
  *

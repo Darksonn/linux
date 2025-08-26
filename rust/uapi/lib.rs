@@ -29,6 +29,8 @@
 )]
 #![cfg_attr(CONFIG_RUSTC_HAS_UNNECESSARY_TRANSMUTES, allow(unnecessary_transmutes))]
 
+use macros::{MaybeAsBytes, MaybeFromBytes};
+
 // Manual definition of blocklisted types.
 type __kernel_size_t = usize;
 type __kernel_ssize_t = isize;

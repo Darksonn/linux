@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
-//! Implements the `FromBytes` derive macro.
+//! Implements the `AsBytes` derive macro.
 
 use proc_macro::{TokenStream, TokenTree, Delimiter};
 use std::iter::Peekable;
@@ -75,7 +75,7 @@ fn parse_fields(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Optio
     Some(fields)
 }
 
-pub(crate) fn maybe_from_bytes_derive(ts: TokenStream) -> TokenStream {
+pub(crate) fn maybe_as_bytes_derive(ts: TokenStream) -> TokenStream {
     let mut tokens = ts.into_iter().peekable();
 
     // Consume attributes until we find the `struct` keyword.
@@ -128,11 +128,11 @@ pub(crate) fn maybe_from_bytes_derive(ts: TokenStream) -> TokenStream {
             new_where_clause.extend(quote!(,));
         }
         let field_ts: TokenStream = field.into_iter().collect();
-        new_where_clause.extend(quote!(for<'a> #field_ts: ::ffi::FromBytes));
+        new_where_clause.extend(quote!(for<'a> #field_ts: ::ffi::AsBytes));
         first = false;
     }
 
     quote! {
-        unsafe impl<#generics_ts> ::ffi::FromBytes for #name<#generics_ts> #new_where_clause {}
+        unsafe impl<#generics_ts> ::ffi::AsBytes for #name<#generics_ts> #new_where_clause {}
     }
 }

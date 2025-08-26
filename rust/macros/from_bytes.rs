@@ -8,5 +8,5 @@ use proc_macro::TokenStream;
 
 pub(crate) fn from_bytes_derive(ts: TokenStream) -> TokenStream {
     // For now, `FromBytes` is the same as `MaybeFromBytes`.
-    maybe_from_bytes::from_bytes_derive(ts)
+    maybe_from_bytes::maybe_from_bytes_derive(ts)
 }

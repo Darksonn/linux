@@ -13,10 +13,11 @@
 
 #[macro_use]
 mod quote;
-mod as_bytes;
+mod maybe_as_bytes;
 mod concat_idents;
 mod export;
 mod from_bytes;
+mod as_bytes;
 mod maybe_from_bytes;
 mod helpers;
 mod kunit;
