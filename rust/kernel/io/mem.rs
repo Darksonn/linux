@@ -54,7 +54,7 @@ impl<'a> IoRequest<'a> {
     ///       pdev: &platform::Device<Core>,
     ///       info: Option<&Self::IdInfo>,
     ///    ) -> Result<Pin<KBox<Self>>> {
-    ///       let offset = 0; // Some offset.
+    ///       const OFFSET: usize = 0; // Some offset.
     ///
     ///       // If the size is known at compile time, use [`Self::iomap_sized`].
     ///       //
@@ -66,9 +66,9 @@ impl<'a> IoRequest<'a> {
     ///       let io = iomem.access(pdev.as_ref())?;
     ///
     ///       // Read and write a 32-bit value at `offset`.
-    ///       let data = io.read32_relaxed(offset);
+    ///       let data = io.read32_relaxed::<OFFSET>();
     ///
-    ///       io.write32_relaxed(data, offset);
+    ///       io.write32_relaxed::<OFFSET>(data);
     ///
     ///       # Ok(KBox::new(SampleDriver, GFP_KERNEL)?.into())
     ///     }

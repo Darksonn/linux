@@ -103,7 +103,7 @@ impl<const SIZE: usize> IoRaw<SIZE> {
 ///# fn no_run() -> Result<(), Error> {
 /// // SAFETY: Invalid usage for example purposes.
 /// let iomem = unsafe { IoMem::<{ core::mem::size_of::<u32>() }>::new(0xBAAAAAAD)? };
-/// iomem.write32(0x42, 0x0);
+/// iomem.write32::<0x0>(0x42);
 /// assert!(iomem.try_write32(0x42, 0x0).is_ok());
 /// assert!(iomem.try_write32(0x42, 0x4).is_err());
 /// # Ok(())
@@ -120,8 +120,8 @@ macro_rules! define_read {
         /// time, the build will fail.
         $(#[$attr])*
         #[inline]
-        pub fn $name(&self, offset: usize) -> $type_name {
-            let addr = self.io_addr_assert::<$type_name>(offset);
+        pub fn $name<const OFF: usize>(&self) -> $type_name {
+            let addr = self.io_addr_assert::<$type_name, OFF>();
 
             // SAFETY: By the type invariant `addr` is a valid address for MMIO operations.
             unsafe { bindings::$c_fn(addr as *const c_void) }
@@ -149,8 +149,8 @@ macro_rules! define_write {
         /// time, the build will fail.
         $(#[$attr])*
         #[inline]
-        pub fn $name(&self, value: $type_name, offset: usize) {
-            let addr = self.io_addr_assert::<$type_name>(offset);
+        pub fn $name<const OFF: usize>(&self, value: $type_name) {
+            let addr = self.io_addr_assert::<$type_name, OFF>();
 
             // SAFETY: By the type invariant `addr` is a valid address for MMIO operations.
             unsafe { bindings::$c_fn(value, addr as *mut c_void) }
@@ -217,10 +217,12 @@ impl<const SIZE: usize> Io<SIZE> {
     }
 
     #[inline]
-    fn io_addr_assert<U>(&self, offset: usize) -> usize {
-        build_assert!(Self::offset_valid::<U>(offset, SIZE));
+    fn io_addr_assert<U, const OFF: usize>(&self) -> usize {
+        const {
+            build_assert!(Self::offset_valid::<U>(OFF, SIZE));
+        }
 
-        self.addr() + offset
+        self.addr() + OFF
     }
 
     define_read!(read8, try_read8, readb -> u8);

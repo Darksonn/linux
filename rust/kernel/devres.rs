@@ -96,7 +96,7 @@ struct Inner<T: Send> {
 /// let devres = KBox::pin_init(Devres::new(dev, iomem), GFP_KERNEL)?;
 ///
 /// let res = devres.try_access().ok_or(ENXIO)?;
-/// res.write8(0x42, 0x0);
+/// res.write8::<0x0>(0x42);
 /// # Ok(())
 /// # }
 /// ```
@@ -232,7 +232,7 @@ impl<T: Send> Devres<T> {
     ///
     ///     // might_sleep()
     ///
-    ///     bar.write32(0x42, 0x0);
+    ///     bar.write32::<0x0>(0x42);
     ///
     ///     Ok(())
     /// }
