@@ -96,16 +96,11 @@ impl ReallocRequest {
 
 impl IdPool {
     /// Constructs a new [`IdPool`].
-    ///
-    /// A capacity below [`BITS_PER_LONG`] is adjusted to
-    /// [`BITS_PER_LONG`].
-    ///
-    /// [`BITS_PER_LONG`]: srctree/include/asm-generic/bitsperlong.h
     #[inline]
-    pub fn new(num_ids: usize, flags: Flags) -> Result<Self, AllocError> {
-        let num_ids = core::cmp::max(num_ids, BITS_PER_LONG);
-        let map = BitmapVec::new(num_ids, flags)?;
-        Ok(Self { map })
+    pub fn new() -> Self {
+        Self {
+            map: BitmapVec::new_small(),
+        }
     }
 
     /// Returns how many IDs this pool can currently have.
@@ -222,5 +217,12 @@ impl IdPool {
     #[inline]
     pub fn release_id(&mut self, id: usize) {
         self.map.clear_bit(id);
+    }
+}
+
+impl Default for IdPool {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
