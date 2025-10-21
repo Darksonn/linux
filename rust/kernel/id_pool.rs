@@ -199,24 +199,52 @@ impl IdPool {
         self.map = resizer.new;
     }
 
-    /// Acquires a new ID by finding and setting the next zero bit in the
-    /// bitmap.
+    /// Finds an unused ID in the bitmap.
     ///
     /// Upon success, returns its index. Otherwise, returns [`None`]
     /// to indicate that a [`Self::grow_request`] is needed.
     #[inline]
-    pub fn acquire_next_id(&mut self, offset: usize) -> Option<usize> {
-        let next_zero_bit = self.map.next_zero_bit(offset);
-        if let Some(nr) = next_zero_bit {
-            self.map.set_bit(nr);
-        }
-        next_zero_bit
+    pub fn find_unused_id(&mut self, offset: usize) -> Option<UnusedId<'_>> {
+        Some(UnusedId {
+            id: self.map.next_zero_bit(offset)?,
+            pool: self,
+        })
     }
 
     /// Releases an ID.
     #[inline]
     pub fn release_id(&mut self, id: usize) {
         self.map.clear_bit(id);
+    }
+}
+
+/// Represents an unused id in an [`IdPool`].
+pub struct UnusedId<'pool> {
+    id: usize,
+    pool: &'pool mut IdPool,
+}
+
+impl<'pool> UnusedId<'pool> {
+    /// Get the unused id as an usize.
+    ///
+    /// Be aware that the id has not yet been acquired in the pool. The
+    /// [`acquire`] method must be called to prevent others from taking the id.
+    pub fn as_usize(&self) -> usize {
+        self.id
+    }
+
+    /// Get the unused id as an u32.
+    ///
+    /// Be aware that the id has not yet been acquired in the pool. The
+    /// [`acquire`] method must be called to prevent others from taking the id.
+    pub fn as_u32(&self) -> u32 {
+        // CAST: The maximum possible value in an IdPool is i32::MAX.
+        self.id as u32
+    }
+
+    /// Acquire the unused id.
+    pub fn acquire(self) {
+        self.pool.map.set_bit(self.id);
     }
 }
 
