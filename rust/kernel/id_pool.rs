@@ -28,19 +28,21 @@ const BITS_PER_LONG: usize = bindings::BITS_PER_LONG as usize;
 /// use kernel::alloc::{AllocError, flags::GFP_KERNEL};
 /// use kernel::id_pool::IdPool;
 ///
-/// let mut pool = IdPool::new(64, GFP_KERNEL)?;
-/// for i in 0..64 {
+/// let mut pool = IdPool::new();
+/// let cap = pool.capacity();
+///
+/// for i in 0..cap {
 ///     assert_eq!(i, pool.acquire_next_id(i).ok_or(ENOSPC)?);
 /// }
 ///
-/// pool.release_id(23);
-/// assert_eq!(23, pool.acquire_next_id(0).ok_or(ENOSPC)?);
+/// pool.release_id(5);
+/// assert_eq!(5, pool.acquire_next_id(0).ok_or(ENOSPC)?);
 ///
 /// assert_eq!(None, pool.acquire_next_id(0));  // time to realloc.
 /// let resizer = pool.grow_request().ok_or(ENOSPC)?.realloc(GFP_KERNEL)?;
 /// pool.grow(resizer);
 ///
-/// assert_eq!(pool.acquire_next_id(0), Some(64));
+/// assert_eq!(pool.acquire_next_id(0), Some(cap));
 /// # Ok::<(), Error>(())
 /// ```
 ///
@@ -96,16 +98,11 @@ impl ReallocRequest {
 
 impl IdPool {
     /// Constructs a new [`IdPool`].
-    ///
-    /// A capacity below [`BITS_PER_LONG`] is adjusted to
-    /// [`BITS_PER_LONG`].
-    ///
-    /// [`BITS_PER_LONG`]: srctree/include/asm-generic/bitsperlong.h
     #[inline]
-    pub fn new(num_ids: usize, flags: Flags) -> Result<Self, AllocError> {
-        let num_ids = core::cmp::max(num_ids, BITS_PER_LONG);
-        let map = BitmapVec::new(num_ids, flags)?;
-        Ok(Self { map })
+    pub fn new() -> Self {
+        Self {
+            map: BitmapVec::new_inline(),
+        }
     }
 
     /// Returns how many IDs this pool can currently have.
@@ -119,20 +116,6 @@ impl IdPool {
     /// The capacity of an [`IdPool`] cannot be shrunk below [`BITS_PER_LONG`].
     ///
     /// [`BITS_PER_LONG`]: srctree/include/asm-generic/bitsperlong.h
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kernel::alloc::{AllocError, flags::GFP_KERNEL};
-    /// use kernel::id_pool::{ReallocRequest, IdPool};
-    ///
-    /// let mut pool = IdPool::new(1024, GFP_KERNEL)?;
-    /// let alloc_request = pool.shrink_request().ok_or(AllocError)?;
-    /// let resizer = alloc_request.realloc(GFP_KERNEL)?;
-    /// pool.shrink(resizer);
-    /// assert_eq!(pool.capacity(), kernel::bindings::BITS_PER_LONG as usize);
-    /// # Ok::<(), AllocError>(())
-    /// ```
     #[inline]
     pub fn shrink_request(&self) -> Option<ReallocRequest> {
         let cap = self.capacity();
@@ -222,5 +205,12 @@ impl IdPool {
     #[inline]
     pub fn release_id(&mut self, id: usize) {
         self.map.clear_bit(id);
+    }
+}
+
+impl Default for IdPool {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
