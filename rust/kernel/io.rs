@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub mod mem;
+pub mod pgtable;
 pub mod poll;
 pub mod resource;
 
