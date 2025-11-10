@@ -28,7 +28,7 @@ const BITS_PER_LONG: usize = bindings::BITS_PER_LONG as usize;
 /// use kernel::alloc::{AllocError, flags::GFP_KERNEL};
 /// use kernel::id_pool::IdPool;
 ///
-/// let mut pool = IdPool::new(64, GFP_KERNEL)?;
+/// let mut pool = IdPool::with_capacity(64, GFP_KERNEL)?;
 /// for i in 0..64 {
 ///     assert_eq!(i, pool.acquire_next_id(i).ok_or(ENOSPC)?);
 /// }
@@ -95,14 +95,14 @@ impl ReallocRequest {
 }
 
 impl IdPool {
-    /// Constructs a new [`IdPool`].
+    /// Constructs a new [`IdPool`] with space for a specific number of bits.
     ///
-    /// A capacity below [`BITS_PER_LONG`] is adjusted to
-    /// [`BITS_PER_LONG`].
+    /// A capacity below [`NO_ALLOC_MAX_LEN`] is adjusted to
+    /// [`NO_ALLOC_MAX_LEN`].
     ///
-    /// [`BITS_PER_LONG`]: srctree/include/asm-generic/bitsperlong.h
+    /// [`NO_ALLOC_MAX_LEN`]: BitmapVec::NO_ALLOC_MAX_LEN
     #[inline]
-    pub fn new(num_ids: usize, flags: Flags) -> Result<Self, AllocError> {
+    pub fn with_capacity(num_ids: usize, flags: Flags) -> Result<Self, AllocError> {
         let num_ids = core::cmp::max(num_ids, BITS_PER_LONG);
         let map = BitmapVec::new(num_ids, flags)?;
         Ok(Self { map })
@@ -126,7 +126,7 @@ impl IdPool {
     /// use kernel::alloc::{AllocError, flags::GFP_KERNEL};
     /// use kernel::id_pool::{ReallocRequest, IdPool};
     ///
-    /// let mut pool = IdPool::new(1024, GFP_KERNEL)?;
+    /// let mut pool = IdPool::with_capacity(1024, GFP_KERNEL)?;
     /// let alloc_request = pool.shrink_request().ok_or(AllocError)?;
     /// let resizer = alloc_request.realloc(GFP_KERNEL)?;
     /// pool.shrink(resizer);
