@@ -6,8 +6,87 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, riscv, loongarch, arm]
+        config: [generic.config]
+        include:
+          - arch: x86_64
+            config: generic.config no-jump-label.config
 
     steps:
     - uses: actions/checkout@v4
-    - name: Run a one-line script
-      run: echo "Hello, GitHub Actions!"
+      with:
+        submodules: true
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rust-src
+    - name: Install bindgen
+      run: cargo install bindgen-cli
+    - name: Configure kernel
+      run: |
+        mkdir -p out
+        make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} allnoconfig
+
+        MERGE_LIST="configs/${{ matrix.arch }}.config"
+        for conf in ${{ matrix.config }}; do
+          MERGE_LIST="$MERGE_LIST configs/$conf"
+        done
+
+        linux/scripts/kconfig/merge_config.sh -m -O out out/.config $MERGE_LIST
+        make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} olddefconfig
+        cp out/.config config
+    - name: Print kernel configuration
+      run: cat config
+    - name: Load from cache
+      uses: actions/cache@v4
+      with:
+        path: out
+        key: kernel-${{ matrix.arch }}-${{ matrix.config }}-${{ hashFiles('out/.config') }}-${{ github.sha }}
+        restore-keys: |
+          kernel-${{ matrix.arch }}-${{ matrix.config }}-${{ hashFiles('out/.config') }}-
+    - name: Set up incremental compilation
+      run: |
+        cmp -s config out/.config || cp config out/.config
+        cd linux && python3 ../.github/scripts/timestamp.py
+    - name: Check Rust availability
+      run: make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} rustavailable
+    - name: Build kernel
+      run: |
+        make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} -j$(nproc)
+    - name: Build rustdoc
+      run: |
+        make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} rustdoc
+
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, rust-src
+    - name: Check formatting
+      run: make -C linux LLVM=1 rustfmt
+
+  checkpatch:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+        fetch-depth: 2
+    - name: Run checkpatch
+      working-directory: linux
+      run: ./scripts/checkpatch.pl --git HEAD
