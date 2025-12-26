@@ -18,6 +18,10 @@ jobs:
             config: generic.config no-jump-label.config
             bindgen: latest
             rustc: stable
+          - arch: riscv
+            config: generic.config no-mmu.config
+            bindgen: latest
+            rustc: stable
           - arch: x86_64
             config: generic.config
             bindgen: latest
@@ -108,7 +112,7 @@ jobs:
       with:
         components: rustfmt, rust-src
     - name: Check formatting
-      run: make -C linux LLVM=1 rustfmt
+      run: make -C linux LLVM=1 rustfmtcheck
 
   checkpatch:
     runs-on: ubuntu-latest
@@ -116,12 +120,16 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: true
-        fetch-depth: 2
+        fetch-depth: 20
     - name: Fetch referenced commits
       working-directory: linux
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        if git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+          git checkout --detach HEAD^1
+        fi
+
         HASHES=$(git log -1 --pretty=%B | tr '\n' ' ' | grep -oP '(?:commit|[\w-]+:)\s+\K[0-9a-f]{12,40}' | sort -u)
 
         for HASH in $HASHES; do
