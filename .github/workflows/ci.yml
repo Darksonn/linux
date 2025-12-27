@@ -11,14 +11,25 @@ jobs:
       matrix:
         arch: [x86_64, arm64, riscv, loongarch, arm]
         config: [generic.config]
+        bindgen: [latest]
         include:
           - arch: x86_64
             config: generic.config no-jump-label.config
+            bindgen: latest
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
+    - name: Resolve bindgen version
+      run: |
+        if [[ "${{ matrix.bindgen }}" == "latest" ]]; then
+          echo "BINDGEN_VERSION=$(gh api repos/rust-lang/rust-bindgen/releases/latest --jq .tag_name | sed 's/^v//')" >> $GITHUB_ENV
+        else
+          echo "BINDGEN_VERSION=${{ matrix.bindgen }}" >> $GITHUB_ENV
+        fi
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -27,8 +38,15 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rust-src
+    - name: Cache bindgen
+      id: cache-bindgen
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/bindgen
+        key: bindgen-${{ runner.os }}-${{ env.BINDGEN_VERSION }}
     - name: Install bindgen
-      run: cargo install bindgen-cli
+      if: steps.cache-bindgen.outputs.cache-hit != 'true'
+      run: cargo install bindgen-cli --version ${{ env.BINDGEN_VERSION }}
     - name: Configure kernel
       run: |
         mkdir -p out
