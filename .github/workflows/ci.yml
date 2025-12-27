@@ -87,6 +87,21 @@ jobs:
       with:
         submodules: true
         fetch-depth: 2
+    - name: Fetch referenced commits
+      working-directory: linux
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        HASHES=$(git log -1 --pretty=%B | tr '\n' ' ' | grep -oP '(?:commit|[\w-]+:)\s+\K[0-9a-f]{12,40}' | sort -u)
+
+        for HASH in $HASHES; do
+          FULL_HASH=$(gh api "repos/torvalds/linux/commits/$HASH" --jq '.sha' 2>/dev/null || true)
+          if [ -n "$FULL_HASH" ]; then
+            git fetch origin $FULL_HASH --depth=1 || true
+          fi
+        done
+    - run: git show
+      working-directory: linux
     - name: Run checkpatch
       working-directory: linux
       run: ./scripts/checkpatch.pl --git HEAD
