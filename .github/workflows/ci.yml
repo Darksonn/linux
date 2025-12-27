@@ -12,10 +12,16 @@ jobs:
         arch: [x86_64, arm64, riscv, loongarch, arm]
         config: [generic.config]
         bindgen: [latest]
+        rustc: [stable]
         include:
           - arch: x86_64
             config: generic.config no-jump-label.config
             bindgen: latest
+            rustc: stable
+          - arch: x86_64
+            config: generic.config
+            bindgen: latest
+            rustc: 1.78.0
 
     steps:
     - uses: actions/checkout@v4
@@ -35,9 +41,10 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
       with:
-        components: rust-src
+        toolchain: ${{ matrix.rustc }}
+        components: rust-src, clippy, rustfmt
     - name: Cache bindgen
       id: cache-bindgen
       uses: actions/cache@v4
