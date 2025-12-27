@@ -59,7 +59,7 @@ jobs:
       run: make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} rustavailable
     - name: Build kernel
       run: |
-        make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} -j$(nproc)
+        make -C linux O=../out LLVM=1 CLIPPY=1 ARCH=${{ matrix.arch }} -j$(nproc)
     - name: Build rustdoc
       run: |
         make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} rustdoc
