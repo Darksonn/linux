@@ -39,7 +39,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm qemu-system-x86 qemu-system-aarch64
     - name: Install Rust
       uses: dtolnay/rust-toolchain@master
       with:
@@ -88,6 +88,11 @@ jobs:
     - name: Build rustdoc
       run: |
         make -C linux O=../out LLVM=1 ARCH=${{ matrix.arch }} rustdoc
+    - name: Run KUnit tests
+      if: matrix.arch == 'x86_64' || matrix.arch == 'arm64'
+      working-directory: linux
+      run: |
+        ./tools/testing/kunit/kunit.py exec --build_dir=../out --arch=${{ matrix.arch }} --make_options LLVM=1
 
   rustfmt:
     runs-on: ubuntu-latest
