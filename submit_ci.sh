@@ -23,20 +23,14 @@ fi
 BASE_COMMIT="$1"
 TIP_COMMIT="$2"
 
-# Fix commits to apply (hardcoded for now)
-# 780b05710047: rust_binder: Fix build failure if !CONFIG_COMPAT
-# c658b7542cb9: rust: bitops: fix missing _find_* functions on 32-bit ARM
-FIXES="780b05710047 c658b7542cb9"
-
 # Prepare Fixes Branch
-echo "Preparing fixes branch based on $BASE_COMMIT..."
+echo "Checking for local fixes branch..."
 (
   cd linux
-  # Create/Reset ci/base-fixes branch
-  git checkout -B ci/base-fixes "$BASE_COMMIT" > /dev/null 2>&1
-  for FIX in $FIXES; do
-    git cherry-pick "$FIX" > /dev/null
-  done
+  if ! git rev-parse --verify ci/base-fixes >/dev/null 2>&1; then
+    echo "Error: local branch 'ci/base-fixes' not found in linux submodule."
+    exit 1
+  fi
 )
 
 # Get list of commits to test (oldest to newest)
@@ -52,8 +46,9 @@ echo "Found $(echo "$COMMITS" | wc -l) commits to test."
 
 for COMMIT in $COMMITS; do
   SHORT_COMMIT=$(echo "$COMMIT" | cut -c1-12)
+  COMMIT_SUBJECT=$(cd linux && git show -s --format=%s "$COMMIT")
   echo "========================================"
-  echo "Processing submodule commit $SHORT_COMMIT"
+  echo "Processing submodule commit $SHORT_COMMIT: $COMMIT_SUBJECT"
   echo "========================================"
   
   # 1. Prepare Submodule
@@ -71,8 +66,9 @@ for COMMIT in $COMMITS; do
   echo "Updating parent repository..."
   git add linux
   # Amend the previous commit to avoid creating a huge history in the parent if running repeatedly? 
-  # But we want to test each one.
-  git commit -m "ci: Update submodule to $SHORT_COMMIT (testing)"
+  # The user said "final history in the parent repository... is linear".
+  # If we just keep making new commits, we get a linear history.
+  git commit -m "$SHORT_COMMIT: $COMMIT_SUBJECT"
 
   # 3. Push Parent
   echo "Pushing to CI..."
