@@ -14,13 +14,18 @@ To submit a series of commits for testing on GitHub Actions, use the `submit_ci.
 
 ### Running Tests
 
-Run the script with the range of commits you want to test (start and end points in the submodule):
+Run the script with either a single commit or a range of commits (start and end points in the submodule):
 
 ```bash
-./submit_ci.sh <base-commit> <tip-commit>
+./submit_ci.sh <commit-or-range-start> [range-end]
 ```
 
-Example:
+Example (single commit):
+```bash
+./submit_ci.sh b4/driver-types
+```
+
+Example (range):
 ```bash
 ./submit_ci.sh origin/master b4/driver-types
 ```

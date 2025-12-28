@@ -14,14 +14,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 [-s seconds] <base-commit> <tip-commit>"
-  echo "Example: $0 origin/master b4/driver-types"
+if [[ $# -eq 0 ]]; then
+  echo "Usage: $0 [-s seconds] <commit-or-range-start> [range-end]"
+  echo "Example (single): $0 b4/driver-types"
+  echo "Example (range):  $0 origin/master b4/driver-types"
   exit 1
 fi
-
-BASE_COMMIT="$1"
-TIP_COMMIT="$2"
 
 # Prepare Fixes Branch
 echo "Checking for local fixes branch..."
@@ -33,12 +31,21 @@ echo "Checking for local fixes branch..."
   fi
 )
 
-# Get list of commits to test (oldest to newest)
-echo "Generating list of commits between $BASE_COMMIT and $TIP_COMMIT..."
-COMMITS=$(cd linux && git rev-list --reverse "${BASE_COMMIT}..${TIP_COMMIT}")
+if [[ $# -eq 1 ]]; then
+  TIP_COMMIT="$1"
+  # Resolve to a full hash to be consistent
+  COMMITS=$(cd linux && git rev-parse "$TIP_COMMIT")
+  echo "Testing single commit: $TIP_COMMIT ($COMMITS)"
+else
+  BASE_COMMIT="$1"
+  TIP_COMMIT="$2"
+  # Get list of commits to test (oldest to newest)
+  echo "Generating list of commits between $BASE_COMMIT and $TIP_COMMIT..."
+  COMMITS=$(cd linux && git rev-list --reverse "${BASE_COMMIT}..${TIP_COMMIT}")
+fi
 
 if [[ -z "$COMMITS" ]]; then
-  echo "No commits found in range."
+  echo "No commits found to test."
   exit 0
 fi
 
@@ -55,9 +62,9 @@ for COMMIT in $COMMITS; do
   echo "Preparing submodule..."
   (
     cd linux
-    git checkout --detach "$COMMIT" > /dev/null 2>&1
+    git checkout --detach "$COMMIT"
     # Merge fixes
-    git merge --no-edit ci/base-fixes > /dev/null
+    git merge --no-edit ci/base-fixes
     # Push to a stable ref for the submodule
     git push --force origin HEAD:refs/heads/ci/fixes
   )
