@@ -26,6 +26,14 @@ jobs:
             config: generic.config
             bindgen: latest
             rustc: 1.78.0
+          - arch: x86_64
+            config: generic.config
+            bindgen: latest
+            rustc: nightly
+          - arch: arm64
+            config: generic.config
+            bindgen: latest
+            rustc: nightly
 
     steps:
     - uses: actions/checkout@v4
