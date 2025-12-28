@@ -21,7 +21,8 @@ To submit a series of commits for testing on GitHub Actions, use the `submit_ci.
 Run the script with either a single commit or a range of commits (start and end points in the submodule):
 
 ```bash
-./submit_ci.sh <commit-or-range-start> [range-end]
+./submit_ci.sh [target-commit]
+./submit_ci.sh [base-commit] [tip-commit]
 ```
 
 Example (single commit):
