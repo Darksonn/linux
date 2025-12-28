@@ -9,7 +9,10 @@ To submit a series of commits for testing on GitHub Actions, use the `submit_ci.
 ### Prerequisites
 
 1.  **Submodule Setup:** Ensure the `linux` submodule is initialized and updated.
-2.  **Fixes Branch (Optional):** If you have a local branch named `ci/base-fixes` in the `linux` submodule, the script will automatically merge it into every commit you test.
+    *   The submodule must have a remote named `origin` that you have permissions to push to.
+2.  **Parent Repo Setup:** The parent repository must also have a remote named `origin` that you have permissions to push to.
+3.  **Pull Request:** You must have an open Pull Request in this repository targeting your submission branch (typically from `ci/actions`). This is necessary because the CI workflow is triggered on `pull_request` events.
+4.  **Fixes Branch (Optional):** If you have a local branch named `ci/base-fixes` in the `linux` submodule, the script will automatically merge it into every commit you test.
     *   This is useful for applying temporary fixes or backports required for the CI to pass.
     *   You can specify a different branch name using the `-f` flag.
 
