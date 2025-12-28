@@ -53,5 +53,5 @@ For each commit in the specified range:
 The CI pipeline (`.github/workflows/ci.yml`) performs:
 *   **Build:** Builds the kernel with `LLVM=1` and `CLIPPY=1` for `x86_64`, `arm64`, `riscv`, etc.
 *   **Test:** Runs KUnit tests under QEMU for `x86_64` and `arm64`.
-*   **Checkpatch:** Runs `scripts/checkpatch.pl` on the commit (checking the first parent if it's a merge).
+*   **Checkpatch:** Runs `scripts/checkpatch.pl` on the commit.
 *   **Rustfmt:** Checks code formatting using `make rustfmtcheck`.
