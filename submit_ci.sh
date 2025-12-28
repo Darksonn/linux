@@ -49,9 +49,12 @@ if [[ -z "$COMMITS" ]]; then
   exit 0
 fi
 
-echo "Found $(echo "$COMMITS" | wc -l) commits to test."
+TOTAL_COMMITS=$(echo "$COMMITS" | wc -l)
+echo "Found $TOTAL_COMMITS commits to test."
 
+COUNT=0
 for COMMIT in $COMMITS; do
+  COUNT=$((COUNT + 1))
   SHORT_COMMIT=$(echo "$COMMIT" | cut -c1-12)
   COMMIT_SUBJECT=$(cd linux && git show -s --format=%s "$COMMIT")
   echo "========================================"
@@ -82,12 +85,14 @@ for COMMIT in $COMMITS; do
   git push --force origin ci/actions
 
   # 4. Wait
-  if [[ -n "$SLEEP_SEC" ]]; then
-    echo "Sleeping for $SLEEP_SEC seconds..."
-    sleep "$SLEEP_SEC"
-  else
-    echo "Check GitHub Actions: https://github.com/Darksonn/linux/actions"
-    read -p "Press Enter when the CI job has started to proceed to the next commit..."
+  if [[ $COUNT -lt $TOTAL_COMMITS ]]; then
+    if [[ -n "$SLEEP_SEC" ]]; then
+      echo "Sleeping for $SLEEP_SEC seconds..."
+      sleep "$SLEEP_SEC"
+    else
+      echo "Check GitHub Actions: https://github.com/Darksonn/linux/actions"
+      read -p "Press Enter when the CI job has started to proceed to the next commit..."
+    fi
   fi
 done
 
