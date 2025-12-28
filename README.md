@@ -1,6 +1,6 @@
 # Rust for Linux CI
 
-This repository hosts the Continuous Integration (CI) configuration for the [Rust for Linux](https://github.com/Rust-for-Linux/linux) project. It runs build tests, checkpatch, KUnit tests (via QEMU), and formatting checks.
+This repository hosts a Continuous Integration (CI) configuration for testing Rust patches for the Linux kernel.
 
 ## Usage
 
