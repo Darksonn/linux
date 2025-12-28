@@ -9,8 +9,9 @@ To submit a series of commits for testing on GitHub Actions, use the `submit_ci.
 ### Prerequisites
 
 1.  **Submodule Setup:** Ensure the `linux` submodule is initialized and updated.
-2.  **Fixes Branch:** You must have a local branch named `ci/base-fixes` in the `linux` submodule. This branch should contain any temporary fixes or backports required for the CI to pass (e.g., build fixes for older kernels, infrastructure tweaks).
-    *   The script will merge this branch into every commit you test.
+2.  **Fixes Branch (Optional):** If you have a local branch named `ci/base-fixes` in the `linux` submodule, the script will automatically merge it into every commit you test.
+    *   This is useful for applying temporary fixes or backports required for the CI to pass.
+    *   You can specify a different branch name using the `-f` flag.
 
 ### Running Tests
 
@@ -32,6 +33,7 @@ Example (range):
 
 **Options:**
 *   `-s <seconds>`: Sleep for the specified number of seconds between pushing commits (useful for pacing CI runs). Default behavior is interactive (wait for Enter).
+*   `-f <branch>`: Specify a custom fixes branch to merge into each commit (defaults to `ci/base-fixes` if it exists).
 
 ### How it works
 

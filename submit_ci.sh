@@ -1,11 +1,16 @@
 #!/bin/bash
 set -e
 
+FIXES_REF=""
 SLEEP_SEC=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     -s|--sleep)
       SLEEP_SEC="$2"
+      shift 2
+      ;;
+    -f|--fixes)
+      FIXES_REF="$2"
       shift 2
       ;;
     *)
@@ -15,21 +20,28 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $# -eq 0 ]]; then
-  echo "Usage: $0 [-s seconds] <commit-or-range-start> [range-end]"
+  echo "Usage: $0 [-s seconds] [-f fixes_branch] <commit-or-range-start> [range-end]"
   echo "Example (single): $0 b4/driver-types"
   echo "Example (range):  $0 origin/master b4/driver-types"
   exit 1
 fi
 
-# Prepare Fixes Branch
-echo "Checking for local fixes branch..."
-(
-  cd linux
-  if ! git rev-parse --verify ci/base-fixes >/dev/null 2>&1; then
-    echo "Error: local branch 'ci/base-fixes' not found in linux submodule."
+# Resolve Fixes Branch
+if [[ -n "$FIXES_REF" ]]; then
+  echo "Checking for custom fixes branch '$FIXES_REF'..."
+  if ! (cd linux && git rev-parse --verify "$FIXES_REF" >/dev/null 2>&1); then
+    echo "Error: local branch '$FIXES_REF' not found in linux submodule."
     exit 1
   fi
-)
+else
+  echo "Checking for default fixes branch 'ci/base-fixes'..."
+  if (cd linux && git rev-parse --verify ci/base-fixes >/dev/null 2>&1); then
+    FIXES_REF="ci/base-fixes"
+    echo "Found local 'ci/base-fixes', using it."
+  else
+    echo "Local 'ci/base-fixes' not found. Proceeding without merging fixes."
+  fi
+fi
 
 if [[ $# -eq 1 ]]; then
   TIP_COMMIT="$1"
@@ -66,8 +78,10 @@ for COMMIT in $COMMITS; do
   (
     cd linux
     git checkout --detach "$COMMIT"
-    # Merge fixes
-    git merge --no-edit ci/base-fixes
+    # Merge fixes if defined
+    if [[ -n "$FIXES_REF" ]]; then
+      git merge --no-edit "$FIXES_REF"
+    fi
     # Push to a stable ref for the submodule
     git push --force origin HEAD:refs/heads/ci/fixes
   )
