@@ -335,12 +335,8 @@ impl LocalFile {
     /// The flags are a combination of the constants in [`flags`].
     #[inline]
     pub fn flags(&self) -> u32 {
-        // This `read_volatile` is intended to correspond to a READ_ONCE call.
-        //
-        // SAFETY: The file is valid because the shared reference guarantees a nonzero refcount.
-        //
-        // FIXME(read_once): Replace with `read_once` when available on the Rust side.
-        unsafe { core::ptr::addr_of!((*self.as_ptr()).f_flags).read_volatile() }
+        // SAFETY: The `f_flags` field of `struct file` is readable with `READ_ONCE`.
+        unsafe { kernel::sync::READ_ONCE(&raw const (*self.as_ptr()).f_flags) }
     }
 }
 
