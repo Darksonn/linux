@@ -239,11 +239,9 @@ impl<T> HrTimer<T> {
         // - Timers cannot have negative ktime_t values as their expiration time.
         // - There's no actual locking here, a racy read is fine and expected
         unsafe {
-            Instant::from_ktime(
-                // This `read_volatile` is intended to correspond to a READ_ONCE call.
-                // FIXME(read_once): Replace with `read_once` when available on the Rust side.
-                core::ptr::read_volatile(&raw const ((*c_timer_ptr).node.expires)),
-            )
+            Instant::from_ktime(kernel::sync::READ_ONCE(
+                &raw const (*c_timer_ptr).node.expires,
+            ))
         }
     }
 }
