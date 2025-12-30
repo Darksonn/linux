@@ -20,6 +20,7 @@ mod locked_by;
 pub mod poll;
 pub mod rcu;
 mod refcount;
+pub mod rwonce;
 mod set_once;
 
 pub use arc::{Arc, ArcBorrow, UniqueArc};
@@ -30,6 +31,7 @@ pub use lock::mutex::{new_mutex, Mutex, MutexGuard};
 pub use lock::spinlock::{new_spinlock, SpinLock, SpinLockGuard};
 pub use locked_by::LockedBy;
 pub use refcount::Refcount;
+pub use rwonce::{READ_ONCE, WRITE_ONCE};
 pub use set_once::SetOnce;
 
 /// Represents a lockdep class. It's a wrapper around C's `lock_class_key`.
