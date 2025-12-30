@@ -4117,9 +4117,11 @@ F:	arch/*/include/asm/atomic*.h
 F:	include/*/atomic*.h
 F:	include/linux/refcount.h
 F:	scripts/atomic/
+F:	rust/helpers/rwonce.c
 F:	rust/kernel/sync/atomic.rs
 F:	rust/kernel/sync/atomic/
 F:	rust/kernel/sync/refcount.rs
+F:	rust/kernel/sync/rwonce.rs
 
 ATTO EXPRESSSAS SAS/SATA RAID SCSI DRIVER
 M:	Bradley Grove <linuxdrivers@attotech.com>
