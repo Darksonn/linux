@@ -163,6 +163,7 @@ macro_rules! impl_rw_once_type {
 // sizes, so picking the wrong helper should lead to a build error.
 
 impl_rw_once_type! {
+    bool, read_once_bool, write_once_1;
     u8,   read_once_1, write_once_1;
     i8,   read_once_1, write_once_1;
     u16,  read_once_2, write_once_2;
@@ -185,4 +186,22 @@ impl_rw_once_type! {
 impl_rw_once_type! {
     usize, read_once_8, write_once_8;
     isize, read_once_8, write_once_8;
+}
+
+/// Read an integer as a boolean once.
+///
+/// Returns `true` if the value behind the pointer is non-zero. Otherwise returns `false`.
+///
+/// # Safety
+///
+/// It must be safe to `READ_ONCE` the `ptr` with type `u8`.
+#[inline(always)]
+#[track_caller]
+unsafe fn read_once_bool(ptr: *const bool) -> bool {
+    // Implement `read_once_bool` in terms of `read_once_1`. The arch-specific logic is inside
+    // of `read_once_1`.
+    //
+    // SAFETY: It is safe to `READ_ONCE` the `ptr` with type `u8`.
+    let byte = unsafe { read_once_1(ptr.cast::<u8>()) };
+    byte != 0u8
 }
