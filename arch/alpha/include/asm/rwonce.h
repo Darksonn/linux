@@ -5,7 +5,7 @@
 #ifndef __ASM_RWONCE_H
 #define __ASM_RWONCE_H
 
-#ifdef CONFIG_SMP
+#ifdef CONFIG_ARCH_USE_CUSTOM_READ_ONCE
 
 #include <asm/barrier.h>
 
@@ -28,7 +28,7 @@
 	(typeof(x))__x;							\
 })
 
-#endif /* CONFIG_SMP */
+#endif /* CONFIG_ARCH_USE_CUSTOM_READ_ONCE */
 
 #include <asm-generic/rwonce.h>
 

@@ -229,6 +229,17 @@ config HAVE_EFFICIENT_UNALIGNED_ACCESS
 	  See Documentation/core-api/unaligned-memory-access.rst for more
 	  information on the topic of unaligned memory accesses.
 
+config ARCH_USE_CUSTOM_READ_ONCE
+	bool
+	help
+	  Some architectures reorder address-dependent volatile loads,
+	  which means that the default implementation of READ_ONCE that
+	  relies on a volatile load is not appropriate.
+
+	  This symbol should be selected by an architecture if it
+	  redefines READ_ONCE to use a different implementation than a
+	  volatile load.
+
 config ARCH_USE_BUILTIN_BSWAP
 	bool
 	help
