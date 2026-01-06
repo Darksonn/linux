@@ -106,6 +106,57 @@ jobs:
       run: |
         ./tools/testing/kunit/kunit.py exec --build_dir=../out --arch=${{ matrix.arch }} --make_options LLVM=1
 
+  build-gcc:
+    name: build-gcc (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: m68k
+            compiler: gcc-m68k-linux-gnu
+            cross_compile: m68k-linux-gnu-
+          - arch: s390
+            compiler: gcc-s390x-linux-gnu
+            cross_compile: s390x-linux-gnu-
+          - arch: powerpc
+            compiler: gcc-powerpc-linux-gnu
+            cross_compile: powerpc-linux-gnu-
+          - arch: x86_64
+            compiler: gcc
+            cross_compile: ""
+          - arch: arm64
+            compiler: gcc-aarch64-linux-gnu
+            cross_compile: aarch64-linux-gnu-
+          - arch: riscv
+            compiler: gcc-riscv64-linux-gnu
+            cross_compile: riscv64-linux-gnu-
+          - arch: arm
+            compiler: gcc-arm-linux-gnueabi
+            cross_compile: arm-linux-gnueabi-
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc ${{ matrix.compiler }}
+    - name: Configure kernel
+      run: |
+        mkdir -p out
+        make -C linux O=../out ARCH=${{ matrix.arch }} CROSS_COMPILE=${{ matrix.cross_compile }} allnoconfig
+
+        MERGE_LIST="configs/gcc/generic.config configs/gcc/${{ matrix.arch }}.config"
+        linux/scripts/kconfig/merge_config.sh -m -O out out/.config $MERGE_LIST
+        make -C linux O=../out ARCH=${{ matrix.arch }} CROSS_COMPILE=${{ matrix.cross_compile }} olddefconfig
+        cp out/.config config
+    - name: Print kernel configuration
+      run: cat config
+    - name: Build kernel
+      run: |
+        make -C linux O=../out ARCH=${{ matrix.arch }} CROSS_COMPILE=${{ matrix.cross_compile }} -j$(nproc)
+
   rustfmt:
     runs-on: ubuntu-latest
     steps:
