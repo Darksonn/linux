@@ -153,6 +153,17 @@ jobs:
         cp out/.config config
     - name: Print kernel configuration
       run: cat config
+    - name: Load from cache
+      uses: actions/cache@v4
+      with:
+        path: out
+        key: kernel-gcc-${{ matrix.arch }}-${{ hashFiles('out/.config') }}-${{ github.sha }}
+        restore-keys: |
+          kernel-gcc-${{ matrix.arch }}-${{ hashFiles('out/.config') }}-
+    - name: Set up incremental compilation
+      run: |
+        cmp -s config out/.config || cp config out/.config
+        cd linux && python3 ../.github/scripts/timestamp.py
     - name: Build kernel
       run: |
         make -C linux O=../out ARCH=${{ matrix.arch }} CROSS_COMPILE=${{ matrix.cross_compile }} -j$(nproc)
