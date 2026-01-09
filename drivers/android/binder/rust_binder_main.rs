@@ -36,6 +36,8 @@ mod context;
 mod deferred_close;
 mod defs;
 mod error;
+#[allow(dead_code)]
+mod netlink;
 mod node;
 mod page_range;
 mod process;
@@ -285,7 +287,9 @@ fn ptr_align(value: usize) -> Option<usize> {
 // SAFETY: We call register in `init`.
 static BINDER_SHRINKER: Shrinker = unsafe { Shrinker::new() };
 
-struct BinderModule {}
+struct BinderModule {
+    _netlink: kernel::netlink::Registration,
+}
 
 impl kernel::Module for BinderModule {
     fn init(_module: &'static kernel::ThisModule) -> Result<Self> {
@@ -294,12 +298,13 @@ impl kernel::Module for BinderModule {
 
         pr_warn!("Loaded Rust Binder.");
 
+        let netlink = crate::netlink::BINDER_NL_FAMILY.register()?;
         BINDER_SHRINKER.register(c"android-binder")?;
 
         // SAFETY: The module is being loaded, so we can initialize binderfs.
         unsafe { kernel::error::to_result(binderfs::init_rust_binderfs())? };
 
-        Ok(Self {})
+        Ok(Self { _netlink: netlink })
     }
 }
 
