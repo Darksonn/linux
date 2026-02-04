@@ -1258,6 +1258,10 @@ impl Thread {
             }
         }
 
+        if info.reply != 0 {
+            info.report_netlink(&self.process.ctx);
+        }
+
         Ok(())
     }
 
