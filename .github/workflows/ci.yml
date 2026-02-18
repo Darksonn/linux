@@ -213,3 +213,12 @@ jobs:
     - name: Run checkpatch
       working-directory: linux
       run: ./scripts/checkpatch.pl --git HEAD
+
+  helpers:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Check helper prefixes
+      run: python3 .github/scripts/check_helpers.py linux/rust/helpers
