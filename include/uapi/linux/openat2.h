@@ -40,4 +40,8 @@ struct open_how {
 					return -EAGAIN if that's not
 					possible. */
 
+/* openat2(2) exclusive flags are defined in the upper 32 bits of
+   open_how->flags  */
+#define OPENAT2_EMPTY_PATH	0x100000000 /* (1ULL << 32) */
+
 #endif /* _UAPI_LINUX_OPENAT2_H */
