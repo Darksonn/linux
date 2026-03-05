@@ -3157,6 +3157,10 @@ static bool manage_workers(struct worker *worker)
 	return true;
 }
 
+#ifdef CONFIG_NET_DEV_REFCNT_TRACKER
+static noinline void process_one_work(struct worker *worker, struct work_struct *work);
+#endif
+
 /**
  * process_one_work - process single work
  * @worker: self
@@ -3180,6 +3184,9 @@ __acquires(&pool->lock)
 	unsigned long work_data;
 	int lockdep_start_depth, rcu_start_depth;
 	bool bh_draining = pool->flags & POOL_BH_DRAINING;
+#ifdef CONFIG_KCOV
+	unsigned int old_kcov_mode, new_kcov_mode;
+#endif
 #ifdef CONFIG_LOCKDEP
 	/*
 	 * It is permissible to free the struct work_struct from
@@ -3272,7 +3279,13 @@ __acquires(&pool->lock)
 	 */
 	lockdep_invariant_state(true);
 	trace_workqueue_execute_start(work);
+#ifdef CONFIG_KCOV
+	old_kcov_mode = READ_ONCE(current->kcov_mode);
+#endif
 	worker->current_func(work);
+#ifdef CONFIG_KCOV
+	new_kcov_mode = READ_ONCE(current->kcov_mode);
+#endif
 	/*
 	 * While we must be careful to not use "work" after this, the trace
 	 * point will only record its address.
@@ -3295,6 +3308,11 @@ __acquires(&pool->lock)
 		debug_show_held_locks(current);
 		dump_stack();
 	}
+#ifdef CONFIG_KCOV
+	if (unlikely(old_kcov_mode != new_kcov_mode))
+		pr_err("workqueue function %ps changed kcov_mode from %u to %u\n",
+		       worker->current_func, old_kcov_mode, new_kcov_mode);
+#endif
 
 	/*
 	 * The following prevents a kworker from hogging CPU on !PREEMPTION
