@@ -21,6 +21,7 @@
 #include "fs.h"
 #include "accessors.h"
 #include "extent-tree.h"
+#include "extent_io.h"
 #include "relocation.h"
 #include "file-item.h"
 
@@ -590,6 +591,9 @@ int btrfs_force_cow_block(struct btrfs_trans_handle *trans,
 		btrfs_tree_unlock(buf);
 	free_extent_buffer_stale(buf);
 	btrfs_mark_buffer_dirty(trans, cow);
+
+	btrfs_inhibit_eb_writeback(trans, cow);
+
 	*cow_ret = cow;
 	return 0;
 
@@ -599,29 +603,43 @@ error_unlock_cow:
 	return ret;
 }
 
-static inline bool should_cow_block(const struct btrfs_trans_handle *trans,
+/*
+ * Check if @buf needs to be COW'd.
+ *
+ * Returns true if COW is required, false if the block can be reused
+ * in place.
+ *
+ * We do not need to COW a block if:
+ * 1) the block was created or changed in this transaction;
+ * 2) the block does not belong to TREE_RELOC tree;
+ * 3) the root is not forced COW.
+ *
+ * Forced COW happens when we create a snapshot during transaction commit:
+ * after copying the src root, we must COW the shared block to ensure
+ * metadata consistency.
+ *
+ * When returning false for a WRITTEN buffer allocated in the current
+ * transaction, re-dirties the buffer for in-place overwrite instead
+ * of requesting a new COW.
+ *
+ * When returning false, inhibits background writeback on the buffer
+ * for the lifetime of the transaction handle.
+ */
+static inline bool should_cow_block(struct btrfs_trans_handle *trans,
 				    const struct btrfs_root *root,
-				    const struct extent_buffer *buf)
+				    struct extent_buffer *buf)
 {
 	if (btrfs_is_testing(root->fs_info))
 		return false;
 
-	/*
-	 * We do not need to cow a block if
-	 * 1) this block is not created or changed in this transaction;
-	 * 2) this block does not belong to TREE_RELOC tree;
-	 * 3) the root is not forced COW.
-	 *
-	 * What is forced COW:
-	 *    when we create snapshot during committing the transaction,
-	 *    after we've finished copying src root, we must COW the shared
-	 *    block to ensure the metadata consistency.
-	 */
-
 	if (btrfs_header_generation(buf) != trans->transid)
 		return true;
 
-	if (btrfs_header_flag(buf, BTRFS_HEADER_FLAG_WRITTEN))
+	if (test_bit(EXTENT_BUFFER_WRITEBACK, &buf->bflags))
+		return true;
+
+	if (btrfs_root_id(root) != BTRFS_TREE_RELOC_OBJECTID &&
+	    btrfs_header_flag(buf, BTRFS_HEADER_FLAG_RELOC))
 		return true;
 
 	/* Ensure we can see the FORCE_COW bit. */
@@ -629,12 +647,51 @@ static inline bool should_cow_block(const struct btrfs_trans_handle *trans,
 	if (test_bit(BTRFS_ROOT_FORCE_COW, &root->state))
 		return true;
 
-	if (btrfs_root_id(root) == BTRFS_TREE_RELOC_OBJECTID)
-		return false;
+	if (btrfs_header_flag(buf, BTRFS_HEADER_FLAG_WRITTEN)) {
+		/*
+		 * The buffer was allocated in this transaction and has been
+		 * written back to disk (WRITTEN is set). Normally we'd COW
+		 * it again, but since the committed superblock doesn't
+		 * reference this buffer (it was allocated in this transaction),
+		 * we can safely overwrite it in place.
+		 *
+		 * We keep BTRFS_HEADER_FLAG_WRITTEN set. The block has been
+		 * persisted at this bytenr and will be again after the
+		 * in-place update. This is important so that
+		 * btrfs_free_tree_block() correctly pins the block if it is
+		 * freed later (e.g., during tree rebalancing or FORCE_COW).
+		 *
+		 * Log trees and zoned devices cannot use this optimization:
+		 * - Log trees: log blocks are written and immediately
+		 *   referenced by a committed superblock via
+		 *   btrfs_sync_log(), bypassing the normal transaction
+		 *   commit. Overwriting in place could corrupt the
+		 *   committed log.
+		 * - Zoned devices: require sequential writes.
+		 */
+		if (btrfs_root_id(root) == BTRFS_TREE_LOG_OBJECTID ||
+		    btrfs_is_zoned(root->fs_info))
+			return true;
 
-	if (btrfs_header_flag(buf, BTRFS_HEADER_FLAG_RELOC))
-		return true;
+		/*
+		 * Re-register this block's range in the current transaction's
+		 * dirty_pages so that btrfs_write_and_wait_transaction()
+		 * writes it. The range was originally registered when the
+		 * block was allocated. Normally dirty_pages is only cleared
+		 * at commit time by btrfs_write_and_wait_transaction(), but
+		 * if qgroups are enabled and snapshots are being created,
+		 * qgroup_account_snapshot() may have already called
+		 * btrfs_write_and_wait_transaction() and released the range
+		 * before the final commit-time call.
+		 */
+		btrfs_set_extent_bit(&trans->transaction->dirty_pages,
+				     buf->start,
+				     buf->start + buf->len - 1,
+				     EXTENT_DIRTY, NULL);
+		btrfs_mark_buffer_dirty(trans, buf);
+	}
 
+	btrfs_inhibit_eb_writeback(trans, buf);
 	return false;
 }
 
@@ -822,7 +879,6 @@ struct extent_buffer *btrfs_read_node_slot(struct extent_buffer *parent,
 {
 	int level = btrfs_header_level(parent);
 	struct btrfs_tree_parent_check check = { 0 };
-	struct extent_buffer *eb;
 
 	if (slot < 0 || slot >= btrfs_header_nritems(parent))
 		return ERR_PTR(-ENOENT);
@@ -835,16 +891,8 @@ struct extent_buffer *btrfs_read_node_slot(struct extent_buffer *parent,
 	check.has_first_key = true;
 	btrfs_node_key_to_cpu(parent, &check.first_key, slot);
 
-	eb = read_tree_block(parent->fs_info, btrfs_node_blockptr(parent, slot),
-			     &check);
-	if (IS_ERR(eb))
-		return eb;
-	if (unlikely(!extent_buffer_uptodate(eb))) {
-		free_extent_buffer(eb);
-		return ERR_PTR(-EIO);
-	}
-
-	return eb;
+	return read_tree_block(parent->fs_info, btrfs_node_blockptr(parent, slot),
+			       &check);
 }
 
 /*
@@ -2106,6 +2154,7 @@ again:
 			    p->nodes[level + 1])) {
 				write_lock_level = level + 1;
 				btrfs_release_path(p);
+				trace_btrfs_search_slot_restart(root, level, "write_lock");
 				goto again;
 			}
 
@@ -2168,8 +2217,10 @@ cow_done:
 		p->slots[level] = slot;
 		ret2 = setup_nodes_for_search(trans, root, p, b, level, ins_len,
 					      &write_lock_level);
-		if (ret2 == -EAGAIN)
+		if (ret2 == -EAGAIN) {
+			trace_btrfs_search_slot_restart(root, level, "setup_nodes");
 			goto again;
+		}
 		if (ret2) {
 			ret = ret2;
 			goto done;
@@ -2185,6 +2236,7 @@ cow_done:
 		if (slot == 0 && ins_len && write_lock_level < level + 1) {
 			write_lock_level = level + 1;
 			btrfs_release_path(p);
+			trace_btrfs_search_slot_restart(root, level, "slot_zero");
 			goto again;
 		}
 
@@ -2198,8 +2250,10 @@ cow_done:
 		}
 
 		ret2 = read_block_for_search(root, p, &b, slot, key);
-		if (ret2 == -EAGAIN && !p->nowait)
+		if (ret2 == -EAGAIN && !p->nowait) {
+			trace_btrfs_search_slot_restart(root, level, "read_block");
 			goto again;
+		}
 		if (ret2) {
 			ret = ret2;
 			goto done;
@@ -3896,7 +3950,7 @@ static noinline int setup_leaf_for_split(struct btrfs_trans_handle *trans,
 			goto err;
 	}
 
-	ret = split_leaf(trans, root, &key, path, ins_len, 1);
+	ret = split_leaf(trans, root, &key, path, ins_len, true);
 	if (ret)
 		goto err;
 
