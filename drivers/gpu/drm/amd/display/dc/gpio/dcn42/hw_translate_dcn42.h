@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: MIT */
 /*
- * Copyright 2020 Mauro Rossi <issor.oruam@gmail.com>
+ * Copyright 2026 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,18 +20,17 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: AMD
- *
  */
 
+#ifndef __DAL_HW_TRANSLATE_DCN42_H__
+#define __DAL_HW_TRANSLATE_DCN42_H__
 
-#ifndef DAL_DC_DCE_DCE60_CLK_MGR_H_
-#define DAL_DC_DCE_DCE60_CLK_MGR_H_
+struct hw_translate;
 
-#include "dc.h"
+/* Initialize Hw translate function pointers */
+void dal_hw_translate_dcn42_init(struct hw_translate *tr);
+#ifdef DAL_EMULATION_SUPPORTED
+void dal_emulated_hw_translate_dcn42_init(struct hw_translate *tr);
+#endif
 
-void dce60_clk_mgr_construct(
-		struct dc_context *ctx,
-		struct clk_mgr_internal *clk_mgr_dce);
-
-#endif /* DAL_DC_DCE_DCE60_CLK_MGR_H_ */
+#endif /* __DAL_HW_TRANSLATE_DCN42_H__ */
