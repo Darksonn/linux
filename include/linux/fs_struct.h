@@ -8,10 +8,11 @@
 #include <linux/seqlock.h>
 
 struct fs_struct {
-	int users;
 	seqlock_t seq;
+	int users;
 	int umask;
 	int in_exec;
+	int pwd_refs;	/* A pool of extra pwd references */
 	struct path root, pwd;
 } __randomize_layout;
 
@@ -38,6 +39,31 @@ static inline void get_fs_pwd(struct fs_struct *fs, struct path *pwd)
 	*pwd = fs->pwd;
 	path_get(pwd);
 	read_sequnlock_excl(&fs->seq);
+}
+
+/* Acquire a pwd reference from the pwd_refs pool, if available */
+static inline void get_fs_pwd_pool(struct fs_struct *fs, struct path *pwd)
+{
+	read_seqlock_excl(&fs->seq);
+	*pwd = fs->pwd;
+	if (fs->pwd_refs)
+		fs->pwd_refs--;
+	else
+		path_get(pwd);
+	read_sequnlock_excl(&fs->seq);
+}
+
+/* Release a pwd reference back to the pwd_refs pool, if appropriate */
+static inline void put_fs_pwd_pool(struct fs_struct *fs, struct path *pwd)
+{
+	read_seqlock_excl(&fs->seq);
+	if ((fs->pwd.dentry == pwd->dentry) && (fs->pwd.mnt == pwd->mnt)) {
+		fs->pwd_refs++;
+		pwd = NULL;
+	}
+	read_sequnlock_excl(&fs->seq);
+	if (pwd)
+		path_put(pwd);
 }
 
 extern bool current_chrooted(void);
