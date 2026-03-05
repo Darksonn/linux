@@ -77,7 +77,7 @@
 			nand-controller@8000c000 {
 				compatible = "fsl,imx23-gpmi-nand";
 				#address-cells = <1>;
-				#size-cells = <1>;
+				#size-cells = <0>;
 				reg = <0x8000c000 0x2000>, <0x8000a000 0x2000>;
 				reg-names = "gpmi-nand", "bch";
 				interrupts = <56>;
@@ -420,9 +420,9 @@
 					     <60>, <58>, <9>, <0>,
 					     <0>, <0>, <0>, <0>;
 				interrupt-names = "audio-adc", "audio-dac", "spdif-tx", "i2c",
-						  "saif0", "empty", "auart0-rx", "auart0-tx",
-						  "auart1-rx", "auart1-tx", "saif1", "empty",
-						  "empty", "empty", "empty", "empty";
+						  "saif0", "empty0", "auart0-rx", "auart0-tx",
+						  "auart1-rx", "auart1-tx", "saif1", "empty1",
+						  "empty2", "empty3", "empty4", "empty5";
 				#dma-cells = <1>;
 				dma-channels = <16>;
 				clocks = <&clks 16>;

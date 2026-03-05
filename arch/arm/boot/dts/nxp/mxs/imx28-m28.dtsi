@@ -24,8 +24,6 @@
 };
 
 &gpmi {
-	#address-cells = <1>;
-	#size-cells = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&gpmi_pins_a &gpmi_status_cfg>;
 	status = "okay";

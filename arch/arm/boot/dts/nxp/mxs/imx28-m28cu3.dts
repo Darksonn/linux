@@ -27,13 +27,13 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&led_pins_gpio>;
 
-		user1 {
+		led-user1 {
 			label = "sd0-led";
 			gpios = <&gpio2 26 0>;
 			linux,default-trigger = "mmc0";
 		};
 
-		user2 {
+		led-user2 {
 			label = "sd1-led";
 			gpios = <&gpio2 24 0>;
 			linux,default-trigger = "mmc2";
@@ -93,21 +93,29 @@
 };
 
 &gpmi {
-	#address-cells = <1>;
-	#size-cells = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&gpmi_pins_a &gpmi_status_cfg>;
 	status = "okay";
 
-	partition@0 {
-		label = "gpmi-nfc-0-boot";
-		reg = <0x00000000 0x01400000>;
-		read-only;
-	};
+	nand@0 {
+		reg = <0>;
 
-	partition@1 {
-		label = "gpmi-nfc-general-use";
-		reg = <0x01400000 0x0ec00000>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "gpmi-nfc-0-boot";
+				reg = <0x00000000 0x01400000>;
+				read-only;
+			};
+
+			partition@1400000 {
+				label = "gpmi-nfc-general-use";
+				reg = <0x01400000 0x0ec00000>;
+			};
+		};
 	};
 };
 
