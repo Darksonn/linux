@@ -1561,6 +1561,11 @@ static int i2c_register_adapter(struct i2c_adapter *adap)
 	adap->dev.type = &i2c_adapter_type;
 	device_initialize(&adap->dev);
 
+	if (!adap->dev.parent)
+		adap->dev.parent = adap->parent;
+	if (!adap->dev.of_node)
+		adap->dev.of_node = adap->of_node;
+
 	/*
 	 * This adapter can be used as a parent immediately after device_add(),
 	 * setup runtime-pm (especially ignore-children) before hand.
@@ -1652,10 +1657,9 @@ static int __i2c_add_numbered_adapter(struct i2c_adapter *adap)
  */
 int i2c_add_adapter(struct i2c_adapter *adapter)
 {
-	struct device *dev = &adapter->dev;
 	int id;
 
-	id = of_alias_get_id(dev->of_node, "i2c");
+	id = of_alias_get_id(adapter->of_node, "i2c");
 	if (id >= 0) {
 		adapter->nr = id;
 		return __i2c_add_numbered_adapter(adapter);
