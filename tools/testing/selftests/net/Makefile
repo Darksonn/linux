@@ -45,6 +45,7 @@ TEST_PROGS := \
 	io_uring_zerocopy_tx.sh \
 	ioam6.sh \
 	ip6_gre_headroom.sh \
+	ip6_tunnel.sh \
 	ip_defrag.sh \
 	ip_local_port_range.sh \
 	ipv6_flowlabel.sh \
@@ -55,6 +56,7 @@ TEST_PROGS := \
 	l2tp.sh \
 	link_netns.py \
 	lwt_dst_cache_ref_loop.sh \
+	macvlan_mcast_shared_mac.sh \
 	msg_zerocopy.sh \
 	nat6to4.sh \
 	ndisc_unsolicited_na_test.sh \
@@ -120,6 +122,7 @@ TEST_PROGS := \
 	vrf_route_leaking.sh \
 	vrf_strict_mode_test.sh \
 	xfrm_policy.sh \
+	xfrm_state.sh \
 # end of TEST_PROGS
 
 TEST_PROGS_EXTENDED := \
