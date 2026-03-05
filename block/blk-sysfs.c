@@ -78,8 +78,14 @@ queue_requests_store(struct gendisk *disk, const char *page, size_t count)
 	/*
 	 * Serialize updating nr_requests with concurrent queue_requests_store()
 	 * and switching elevator.
+	 *
+	 * Use trylock to avoid circular lock dependency with kernfs active
+	 * reference during concurrent disk deletion:
+	 *   update_nr_hwq_lock -> kn->active (via del_gendisk -> kobject_del)
+	 *   kn->active -> update_nr_hwq_lock (via this sysfs write path)
 	 */
-	down_write(&set->update_nr_hwq_lock);
+	if (!down_write_trylock(&set->update_nr_hwq_lock))
+		return -EBUSY;
 
 	if (nr == q->nr_requests)
 		goto unlock;
@@ -384,6 +390,36 @@ static ssize_t queue_nr_zones_show(struct gendisk *disk, char *page)
 	return queue_var_show(disk_nr_zones(disk), page);
 }
 
+static ssize_t queue_zoned_qd1_writes_show(struct gendisk *disk, char *page)
+{
+	return queue_var_show(!!blk_queue_zoned_qd1_writes(disk->queue),
+			      page);
+}
+
+static ssize_t queue_zoned_qd1_writes_store(struct gendisk *disk,
+					    const char *page, size_t count)
+{
+	struct request_queue *q = disk->queue;
+	unsigned long qd1_writes;
+	unsigned int memflags;
+	ssize_t ret;
+
+	ret = queue_var_store(&qd1_writes, page, count);
+	if (ret < 0)
+		return ret;
+
+	memflags = blk_mq_freeze_queue(q);
+	blk_mq_quiesce_queue(q);
+	if (qd1_writes)
+		blk_queue_flag_set(QUEUE_FLAG_ZONED_QD1_WRITES, q);
+	else
+		blk_queue_flag_clear(QUEUE_FLAG_ZONED_QD1_WRITES, q);
+	blk_mq_unquiesce_queue(q);
+	blk_mq_unfreeze_queue(q, memflags);
+
+	return count;
+}
+
 static ssize_t queue_iostats_passthrough_show(struct gendisk *disk, char *page)
 {
 	return queue_var_show(!!blk_queue_passthrough_stat(disk->queue), page);
@@ -611,6 +647,7 @@ QUEUE_LIM_RO_ENTRY(queue_max_zone_append_sectors, "zone_append_max_bytes");
 QUEUE_LIM_RO_ENTRY(queue_zone_write_granularity, "zone_write_granularity");
 
 QUEUE_LIM_RO_ENTRY(queue_zoned, "zoned");
+QUEUE_RW_ENTRY(queue_zoned_qd1_writes, "zoned_qd1_writes");
 QUEUE_RO_ENTRY(queue_nr_zones, "nr_zones");
 QUEUE_LIM_RO_ENTRY(queue_max_open_zones, "max_open_zones");
 QUEUE_LIM_RO_ENTRY(queue_max_active_zones, "max_active_zones");
@@ -748,6 +785,7 @@ static struct attribute *queue_attrs[] = {
 	&queue_nomerges_entry.attr,
 	&queue_poll_entry.attr,
 	&queue_poll_delay_entry.attr,
+	&queue_zoned_qd1_writes_entry.attr,
 
 	NULL,
 };
@@ -780,7 +818,8 @@ static umode_t queue_attr_visible(struct kobject *kobj, struct attribute *attr,
 	struct request_queue *q = disk->queue;
 
 	if ((attr == &queue_max_open_zones_entry.attr ||
-	     attr == &queue_max_active_zones_entry.attr) &&
+	     attr == &queue_max_active_zones_entry.attr ||
+	     attr == &queue_zoned_qd1_writes_entry.attr) &&
 	    !blk_queue_is_zoned(q))
 		return 0;
 
@@ -927,6 +966,14 @@ int blk_register_queue(struct gendisk *disk)
 	if (queue_is_mq(q))
 		blk_mq_debugfs_register(q);
 	blk_debugfs_unlock(q, memflags);
+
+	/*
+	 * For blk-mq rotational zoned devices, default to using QD=1
+	 * writes. For non-mq rotational zoned devices, the device driver can
+	 * set an appropriate default.
+	 */
+	if (queue_is_mq(q) && blk_queue_rot(q) && blk_queue_is_zoned(q))
+		blk_queue_flag_set(QUEUE_FLAG_ZONED_QD1_WRITES, q);
 
 	ret = disk_register_independent_access_ranges(disk);
 	if (ret)
