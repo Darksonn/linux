@@ -862,7 +862,7 @@ xfs_zone_alloc_and_submit(
 	bool			is_seq;
 
 	if (xfs_is_shutdown(mp))
-		goto out_error;
+		goto out_io_error;
 
 	/*
 	 * If we don't have a locally cached zone in this write context, see if
@@ -875,7 +875,7 @@ xfs_zone_alloc_and_submit(
 select_zone:
 		*oz = xfs_select_zone(mp, write_hint, pack_tight);
 		if (!*oz)
-			goto out_error;
+			goto out_io_error;
 		xfs_set_cached_zone(ip, *oz);
 	}
 
@@ -902,7 +902,10 @@ select_zone:
 
 out_split_error:
 	ioend->io_bio.bi_status = errno_to_blk_status(PTR_ERR(split));
-out_error:
+	bio_endio(&ioend->io_bio);
+	return;
+
+out_io_error:
 	bio_io_error(&ioend->io_bio);
 }
 
