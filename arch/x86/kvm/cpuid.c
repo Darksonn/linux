@@ -776,7 +776,10 @@ do {									\
 #define SYNTHESIZED_F(name)					\
 ({								\
 	kvm_cpu_cap_synthesized |= feature_bit(name);		\
-	F(name);						\
+								\
+	BUILD_BUG_ON(X86_FEATURE_##name >= MAX_CPU_FEATURES);	\
+	if (boot_cpu_has(X86_FEATURE_##name))			\
+		F(name);					\
 })
 
 /*
@@ -2157,7 +2160,8 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 {
 	u32 eax, ebx, ecx, edx;
 
-	if (cpuid_fault_enabled(vcpu) && !kvm_require_cpl(vcpu, 0))
+	if (!is_smm(vcpu) && cpuid_fault_enabled(vcpu) &&
+	    !kvm_require_cpl(vcpu, 0))
 		return 1;
 
 	eax = kvm_rax_read(vcpu);
