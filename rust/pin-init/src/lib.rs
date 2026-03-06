@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![allow(unused_features)]
 //! Library to safely and fallibly initialize pinned `struct`s using in-place constructors.
 //!
 //! [Pinning][pinning] is Rust's way of ensuring data does not move.
