@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
 
+
 jobs:
   build:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
@@ -36,7 +37,7 @@ jobs:
             rustc: nightly
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: true
     - name: Resolve bindgen version
@@ -59,7 +60,7 @@ jobs:
         components: rust-src, clippy, rustfmt
     - name: Cache bindgen
       id: cache-bindgen
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cargo/bin/bindgen
         key: bindgen-${{ runner.os }}-${{ runner.arch }}-${{ env.BINDGEN_VERSION }}
@@ -82,7 +83,7 @@ jobs:
     - name: Print kernel configuration
       run: cat config
     - name: Load from cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: out
         key: kernel-${{ matrix.arch }}-${{ matrix.config }}-${{ hashFiles('out/.config') }}-${{ github.sha }}
@@ -135,7 +136,7 @@ jobs:
             compiler: gcc-arm-linux-gnueabi
             cross_compile: arm-linux-gnueabi-
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: true
     - name: Install dependencies
@@ -154,7 +155,7 @@ jobs:
     - name: Print kernel configuration
       run: cat config
     - name: Load from cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: out
         key: kernel-gcc-${{ matrix.arch }}-${{ hashFiles('out/.config') }}-${{ github.sha }}
@@ -171,7 +172,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: true
     - name: Install dependencies
@@ -187,7 +188,7 @@ jobs:
   checkpatch:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: true
         fetch-depth: 20
@@ -217,7 +218,7 @@ jobs:
   helpers:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: true
     - name: Check helper prefixes
