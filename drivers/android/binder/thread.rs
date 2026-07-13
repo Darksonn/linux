@@ -279,7 +279,7 @@ const LOOPER_WAITING_PROC: u32 = 0x20;
 const LOOPER_POLL: u32 = 0x40;
 
 impl InnerThread {
-    fn new() -> Result<Self> {
+    fn new(pid: i32) -> Result<Self> {
         fn next_err_id() -> u32 {
             static EE_ID: Atomic<u32> = Atomic::new(0);
             EE_ID.fetch_add(1, Relaxed)
@@ -290,8 +290,8 @@ impl InnerThread {
             looper_need_return: false,
             is_dead: false,
             process_work_list: false,
-            reply_work: ThreadError::try_new()?,
-            return_work: ThreadError::try_new()?,
+            reply_work: ThreadError::try_new(pid)?,
+            return_work: ThreadError::try_new(pid)?,
             work_list: List::new(),
             current_transaction: None,
             extended_error: ExtendedError::new(next_err_id(), BR_OK, 0),
@@ -445,7 +445,7 @@ kernel::list::impl_list_item! {
 
 impl Thread {
     pub(crate) fn new(id: i32, process: Arc<Process>) -> Result<Arc<Self>> {
-        let inner = InnerThread::new()?;
+        let inner = InnerThread::new(process.task.pid())?;
 
         Arc::pin_init(
             try_pin_init!(Thread {
@@ -1115,6 +1115,12 @@ impl Thread {
             let mut inner = thread.inner.lock();
             inner.pop_transaction_to_reply(thread.as_ref())
         } {
+            binder_debug!(
+                DeadTransaction,
+                "release transaction {} in, still active",
+                transaction.debug_id
+            );
+
             let reply = Err(BR_DEAD_REPLY);
             if !transaction
                 .from
@@ -1304,7 +1310,10 @@ impl Thread {
         // TODO: We need to ensure that there isn't a pending transaction in the work queue. How
         // could this happen?
         let top = self.top_of_transaction_stack()?;
-        let list_completion = DTRWrap::arc_try_new(DeliverCode::new(BR_TRANSACTION_COMPLETE))?;
+        let list_completion = DTRWrap::arc_try_new(DeliverCode::new(
+            BR_TRANSACTION_COMPLETE,
+            self.process.task.pid(),
+        ))?;
         let completion = list_completion.clone_arc();
         let transaction = Transaction::new(node_ref, top, self, info)?;
 
@@ -1356,7 +1365,10 @@ impl Thread {
 
         // We need to complete the transaction even if we cannot complete building the reply.
         let out = (|| -> BinderResult<_> {
-            let completion = DTRWrap::arc_try_new(DeliverCode::new(BR_TRANSACTION_COMPLETE))?;
+            let completion = DTRWrap::arc_try_new(DeliverCode::new(
+                BR_TRANSACTION_COMPLETE,
+                self.process.task.pid(),
+            ))?;
             let process = orig.from.process.clone();
             let allow_fds = orig.flags & TF_ACCEPT_FDS != 0;
             let reply = Transaction::new_reply(self, process, info, allow_fds)?;
@@ -1396,7 +1408,8 @@ impl Thread {
         } else {
             BR_TRANSACTION_COMPLETE
         };
-        let list_completion = DTRWrap::arc_try_new(DeliverCode::new(code))?;
+        let list_completion =
+            DTRWrap::arc_try_new(DeliverCode::new(code, self.process.task.pid()))?;
         let completion = list_completion.clone_arc();
         self.inner.lock().push_work(list_completion);
         match transaction.submit(info) {
@@ -1652,14 +1665,16 @@ impl Thread {
 #[pin_data]
 struct ThreadError {
     error_code: Atomic<u32>,
+    pid: i32,
     #[pin]
     links_track: AtomicTracker,
 }
 
 impl ThreadError {
-    fn try_new() -> Result<DArc<Self>> {
+    fn try_new(pid: i32) -> Result<DArc<Self>> {
         DTRWrap::arc_pin_init(pin_init!(Self {
             error_code: Atomic::new(BR_OK),
+            pid,
             links_track <- AtomicTracker::new(),
         }))
         .map(ListArc::into_arc)
@@ -1686,7 +1701,16 @@ impl DeliverToRead for ThreadError {
         Ok(true)
     }
 
-    fn cancel(self: DArc<Self>) {}
+    fn cancel(self: DArc<Self>) {
+        let code = self.error_code.load(Relaxed);
+        if code != BR_OK {
+            binder_debug!(
+                pid = self.pid,
+                DeadTransaction,
+                "undelivered TRANSACTION_ERROR: {code}"
+            );
+        }
+    }
 
     fn should_sync_wakeup(&self) -> bool {
         false

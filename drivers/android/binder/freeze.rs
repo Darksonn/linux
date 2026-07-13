@@ -60,6 +60,7 @@ type UninitFM = UniqueArc<core::mem::MaybeUninit<DTRWrap<FreezeMessage>>>;
 /// Represents a notification that the freeze state has changed.
 pub(crate) struct FreezeMessage {
     cookie: FreezeCookie,
+    pid: i32,
 }
 
 kernel::list::impl_list_arc_safe! {
@@ -73,8 +74,8 @@ impl FreezeMessage {
         UniqueArc::new_uninit(flags)
     }
 
-    fn init(ua: UninitFM, cookie: FreezeCookie) -> DLArc<FreezeMessage> {
-        match ua.pin_init_with(DTRWrap::new(FreezeMessage { cookie })) {
+    fn init(ua: UninitFM, cookie: FreezeCookie, pid: i32) -> DLArc<FreezeMessage> {
+        match ua.pin_init_with(DTRWrap::new(FreezeMessage { cookie, pid })) {
             Ok(msg) => ListArc::from(msg),
             Err(err) => match err {},
         }
@@ -140,7 +141,14 @@ impl DeliverToRead for FreezeMessage {
         }
     }
 
-    fn cancel(self: DArc<Self>) {}
+    fn cancel(self: DArc<Self>) {
+        binder_debug!(
+            pid = self.pid,
+            DeadTransaction,
+            "undelivered freeze notification, {:016x}",
+            self.cookie.0
+        );
+    }
 
     fn should_sync_wakeup(&self) -> bool {
         false
@@ -258,7 +266,7 @@ impl Process {
         }
 
         *info.freeze() = Some(cookie);
-        let msg = FreezeMessage::init(msg, cookie);
+        let msg = FreezeMessage::init(msg, cookie, self.task.pid());
         drop(node_refs_guard);
         let _ = self.push_work(msg);
         Ok(())
@@ -279,7 +287,7 @@ impl Process {
         };
         let mut clear_msg = None;
         if freeze.num_pending_duplicates > 0 {
-            clear_msg = Some(FreezeMessage::init(alloc, cookie));
+            clear_msg = Some(FreezeMessage::init(alloc, cookie, self.task.pid()));
             freeze.num_pending_duplicates -= 1;
             freeze.num_cleared_duplicates += 1;
         } else {
@@ -294,7 +302,7 @@ impl Process {
             let is_frozen = freeze.node.owner.inner.lock().is_frozen.is_fully_frozen();
             if freeze.is_clearing || freeze.last_is_frozen != Some(is_frozen) {
                 // Immediately send another FreezeMessage.
-                clear_msg = Some(FreezeMessage::init(alloc, cookie));
+                clear_msg = Some(FreezeMessage::init(alloc, cookie, self.task.pid()));
             }
             freeze.is_pending = false;
         }
@@ -347,7 +355,7 @@ impl Process {
         *info.freeze() = None;
         let mut msg = None;
         if !listener.is_pending {
-            msg = Some(FreezeMessage::init(alloc, cookie));
+            msg = Some(FreezeMessage::init(alloc, cookie, self.task.pid()));
         }
         drop(node_refs_guard);
 
@@ -427,7 +435,7 @@ impl Process {
                 continue;
             };
             let msg_alloc = FreezeMessage::new(GFP_KERNEL)?;
-            let msg = FreezeMessage::init(msg_alloc, cookie);
+            let msg = FreezeMessage::init(msg_alloc, cookie, proc.task.pid());
             batch.push((proc, msg), GFP_KERNEL)?;
         }
 
