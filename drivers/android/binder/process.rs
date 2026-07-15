@@ -16,6 +16,7 @@ use core::mem::take;
 
 use kernel::{
     bindings,
+    bits::bit_u8,
     cred::Credential,
     error::Error,
     fs::file::{self, File},
@@ -70,9 +71,18 @@ impl Mapping {
     }
 }
 
-// bitflags for defer_work.
-const PROC_DEFER_FLUSH: u8 = 1;
-const PROC_DEFER_RELEASE: u8 = 2;
+kernel::impl_flags!(
+    /// Represents multiple deferred work flags.
+    #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
+    pub struct DeferWorks(u8);
+
+    /// Represents a single deferred work category.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DeferWork {
+        Flush = bit_u8(0),
+        Release = bit_u8(1),
+    }
+);
 
 #[derive(Copy, Clone)]
 pub(crate) enum IsFrozen {
@@ -121,7 +131,7 @@ pub(crate) struct ProcessInner {
     started_thread_count: u32,
 
     /// Bitmap of deferred work to do.
-    defer_work: u8,
+    defer_work: DeferWorks,
 
     /// Number of transactions to be transmitted before processes in freeze_wait
     /// are woken up.
@@ -151,7 +161,7 @@ impl ProcessInner {
             requested_thread_count: 0,
             max_threads: 0,
             started_thread_count: 0,
-            defer_work: 0,
+            defer_work: DeferWorks::default(),
             outstanding_txns: 0,
             is_frozen: IsFrozen::No,
             sync_recv: false,
@@ -489,13 +499,13 @@ impl workqueue::WorkItem for Process {
         {
             let mut inner = me.inner.lock();
             defer = inner.defer_work;
-            inner.defer_work = 0;
+            inner.defer_work = DeferWorks::default();
         }
 
-        if defer & PROC_DEFER_FLUSH != 0 {
+        if defer.contains(DeferWork::Flush) {
             me.deferred_flush();
         }
-        if defer & PROC_DEFER_RELEASE != 0 {
+        if defer.contains(DeferWork::Release) {
             me.deferred_release();
         }
     }
@@ -1635,8 +1645,8 @@ impl Process {
         let should_schedule;
         {
             let mut inner = this.inner.lock();
-            should_schedule = inner.defer_work == 0;
-            inner.defer_work |= PROC_DEFER_RELEASE;
+            should_schedule = inner.defer_work == DeferWorks::empty();
+            inner.defer_work |= DeferWork::Release;
             binderfs_file = inner.binderfs_file.take();
         }
 
@@ -1653,8 +1663,8 @@ impl Process {
         let should_schedule;
         {
             let mut inner = this.inner.lock();
-            should_schedule = inner.defer_work == 0;
-            inner.defer_work |= PROC_DEFER_FLUSH;
+            should_schedule = inner.defer_work == DeferWorks::empty();
+            inner.defer_work |= DeferWork::Flush;
         }
 
         if should_schedule {
