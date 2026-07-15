@@ -31,7 +31,7 @@ use crate::{
     process::{GetWorkOrRegister, Process},
     ptr_align,
     stats::GLOBAL_STATS,
-    transaction::{Transaction, TransactionInfo},
+    transaction::{Transaction, TransactionFlag, TransactionFlags, TransactionInfo},
     BinderReturnWriter, DArc, DLArc, DTRWrap, DeliverCode, DeliverToRead,
 };
 
@@ -1226,7 +1226,7 @@ impl Thread {
         info.from_pid = self.process.task.pid();
         info.from_tid = self.id;
         info.code = td.transaction_data.code;
-        info.flags = td.transaction_data.flags;
+        info.flags = TransactionFlags::from_bits(td.transaction_data.flags);
         info.data_ptr = UserPtr::from_addr(trd_data_ptr.buffer as usize);
         info.data_size = td.transaction_data.data_size as usize;
         info.offsets_ptr = UserPtr::from_addr(trd_data_ptr.offsets as usize);
@@ -1329,7 +1329,7 @@ impl Thread {
         let out = (|| -> BinderResult<_> {
             let completion = DTRWrap::arc_try_new(DeliverCode::new(BR_TRANSACTION_COMPLETE))?;
             let process = orig.from.process.clone();
-            let allow_fds = orig.flags & TF_ACCEPT_FDS != 0;
+            let allow_fds = orig.flags.contains(TransactionFlag::AcceptFds);
             let reply = Transaction::new_reply(self, process, info, allow_fds)?;
             self.inner.lock().push_work(completion);
             orig.from.deliver_reply(Ok(reply), &orig);
