@@ -118,6 +118,18 @@ config SAMPLE_RUST_DRIVER_PCI
 
 	  If unsure, say N.
 
+config SAMPLE_RUST_DRIVER_PCI_EDU
+	tristate "PCI EDU Driver (miscdevice)"
+	depends on PCI
+	help
+	  This option builds the Rust PCI EDU driver sample.
+	  It combines pci and miscdevice to operate the QEMU PCI EDU device.
+
+	  To compile this as a module, choose M here:
+	  the module will be called rust_driver_pci_edu.
+
+	  If unsure, say N.
+
 config SAMPLE_RUST_DRIVER_PLATFORM
 	tristate "Platform Driver"
 	help
