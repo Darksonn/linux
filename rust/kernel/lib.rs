@@ -96,6 +96,7 @@ pub mod fmt;
 pub mod fs;
 pub mod id_pool;
 pub mod init;
+pub mod interrupt;
 pub mod io;
 pub mod ioctl;
 pub mod iov;
