@@ -153,10 +153,11 @@ impl kernel::InPlaceModule for RustMiscDeviceModule {
 
         let options = MiscDeviceOptions {
             name: c"rust-misc-device",
+            parent: None,
         };
 
         try_pin_init!(Self {
-            _miscdev <- MiscDeviceRegistration::register(options),
+            _miscdev <- MiscDeviceRegistration::register(options, ()),
         })
     }
 }
@@ -175,6 +176,7 @@ struct RustMiscDevice {
 
 #[vtable]
 impl MiscDevice for RustMiscDevice {
+    type Data = ();
     type Ptr = Pin<KBox<Self>>;
 
     fn open(_file: &File, misc: &MiscDeviceRegistration<Self>) -> Result<Pin<KBox<Self>>> {

@@ -10,7 +10,7 @@
 
 use crate::{
     bindings,
-    device::Device,
+    device::{self, Device},
     error::{
         to_result,
         VTABLE_DEFAULT_ERROR, //
@@ -35,17 +35,23 @@ use core::marker::PhantomData;
 
 /// Options for creating a misc device.
 #[derive(Copy, Clone)]
-pub struct MiscDeviceOptions {
+pub struct MiscDeviceOptions<'a> {
     /// The name of the miscdevice.
     pub name: &'static CStr,
+    /// The parent of the miscdevice, if any.
+    pub parent: Option<&'a device::Device<device::Bound>>,
 }
 
-impl MiscDeviceOptions {
+impl<'a> MiscDeviceOptions<'a> {
     /// Create a raw `struct miscdev` ready for registration.
     pub const fn into_raw<T: MiscDevice>(self) -> bindings::miscdevice {
         let mut result: bindings::miscdevice = pin_init::zeroed();
         result.minor = bindings::MISC_DYNAMIC_MINOR as ffi::c_int;
         result.name = crate::str::as_char_ptr_in_const_context(self.name);
+        result.parent = match self.parent {
+            Some(parent) => parent.as_raw(),
+            None => core::ptr::null_mut(),
+        };
         result.fops = MiscdeviceVTable::<T>::build();
         result
     }
@@ -62,24 +68,27 @@ impl MiscDeviceOptions {
 /// - Deregistration occurs exactly once in [`Drop`] via `misc_deregister()`.
 /// - `inner` wraps a valid, pinned `miscdevice` created using
 ///   [`MiscDeviceOptions::into_raw`].
-#[repr(transparent)]
+#[repr(C)]
 #[pin_data(PinnedDrop)]
-pub struct MiscDeviceRegistration<T> {
+pub struct MiscDeviceRegistration<T: MiscDevice> {
     #[pin]
     inner: Opaque<bindings::miscdevice>,
-    _t: PhantomData<T>,
+    data: T::Data,
 }
 
 // SAFETY: It is allowed to call `misc_deregister` on a different thread from where you called
 // `misc_register`.
-unsafe impl<T> Send for MiscDeviceRegistration<T> {}
+unsafe impl<T: MiscDevice> Send for MiscDeviceRegistration<T> {}
 // SAFETY: All `&self` methods on this type are written to ensure that it is safe to call them in
 // parallel.
-unsafe impl<T> Sync for MiscDeviceRegistration<T> {}
+unsafe impl<T: MiscDevice> Sync for MiscDeviceRegistration<T> {}
 
 impl<T: MiscDevice> MiscDeviceRegistration<T> {
     /// Register a misc device.
-    pub fn register(opts: MiscDeviceOptions) -> impl PinInit<Self, Error> {
+    pub fn register(
+        opts: MiscDeviceOptions<'_>,
+        data: T::Data,
+    ) -> impl PinInit<Self, Error> + use<'_, T> {
         try_pin_init!(Self {
             inner <- Opaque::try_ffi_init(move |slot: *mut bindings::miscdevice| {
                 // SAFETY: The initializer can write to the provided `slot`.
@@ -92,7 +101,7 @@ impl<T: MiscDevice> MiscDeviceRegistration<T> {
                 // misc device.
                 to_result(unsafe { bindings::misc_register(slot) })
             }),
-            _t: PhantomData,
+            data: data,
         })
     }
 
@@ -110,10 +119,23 @@ impl<T: MiscDevice> MiscDeviceRegistration<T> {
         // before the underlying `struct miscdevice` is destroyed.
         unsafe { Device::from_raw((*self.as_raw()).this_device) }
     }
+
+    /// Access the private data associated with this misc device registration.
+    pub fn data(&self) -> &T::Data {
+        &self.data
+    }
+}
+
+impl<T: MiscDevice> core::ops::Deref for MiscDeviceRegistration<T> {
+    type Target = T::Data;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
 }
 
 #[pinned_drop]
-impl<T> PinnedDrop for MiscDeviceRegistration<T> {
+impl<T: MiscDevice> PinnedDrop for MiscDeviceRegistration<T> {
     fn drop(self: Pin<&mut Self>) {
         // SAFETY: We know that the device is registered by the type invariants.
         unsafe { bindings::misc_deregister(self.inner.get()) };
@@ -123,6 +145,9 @@ impl<T> PinnedDrop for MiscDeviceRegistration<T> {
 /// Trait implemented by the private data of an open misc device.
 #[vtable]
 pub trait MiscDevice: Sized {
+    /// Context data associated with the misc device.
+    type Data: Send + Sync;
+
     /// What kind of pointer should `Self` be wrapped in.
     type Ptr: ForeignOwnable + Send + Sync;
 
