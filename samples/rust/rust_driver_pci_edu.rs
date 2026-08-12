@@ -1,253 +1,332 @@
 // SPDX-License-Identifier: GPL-2.0
-
-//! Rust PCI EDU driver sample with a miscdevice interface and IRQ support.
+#![allow(unused_variables, unused_imports)]
+//! Rust PCI EDU driver sample with a DRM class device interface and IRQ support.
 //!
-//! To make this driver probe, QEMU must be run with `-device edu`.
-//!
-//! This sample demonstrates how to combine the `pci::Driver`, `miscdevice`, and `irq::Handler`
-//! abstractions to create a driver that operates a PCI device via a miscdevice interface (`/dev/qemu-edu`).
-//!
-//! # Example userspace C program
-//!
-//! Below is an example C program that exercises `/dev/qemu-edu` via IOCTLs:
+//! To use this driver:
 //!
 //! ```c
+//! #include <fcntl.h>
 //! #include <stdio.h>
 //! #include <stdlib.h>
-//! #include <errno.h>
-//! #include <fcntl.h>
-//! #include <unistd.h>
+//! #include <string.h>
 //! #include <sys/ioctl.h>
-//! #include <stdint.h>
+//! #include <unistd.h>
+//! #include <drm/drm.h>
 //!
-//! #define RUST_EDU_GET_ID            _IOR('E', 0x00, uint32_t)
-//! #define RUST_EDU_TEST_LIVENESS     _IOWR('E', 0x01, uint32_t)
-//! #define RUST_EDU_COMPUTE_FACTORIAL _IOWR('E', 0x02, uint32_t)
-//! #define RUST_EDU_TEST_IRQ          _IOW('E', 0x03, uint32_t)
+//! struct drm_edu_get_id {
+//!     __u32 id;
+//! };
 //!
-//! int main() {
-//!   int fd, ret;
-//!   uint32_t val;
+//! struct drm_edu_test_liveness {
+//!     __u32 val;
+//!     __u32 inv;
+//! };
 //!
-//!   printf("Opening /dev/qemu-edu\n");
-//!   fd = open("/dev/qemu-edu", O_RDWR);
-//!   if (fd < 0) {
-//!     perror("open");
-//!     return errno;
-//!   }
+//! struct drm_edu_compute_factorial {
+//!     __u32 val;
+//!     __u32 res;
+//! };
 //!
-//!   printf("Fetching EDU identification register\n");
-//!   ret = ioctl(fd, RUST_EDU_GET_ID, &val);
-//!   if (ret < 0) {
-//!     perror("ioctl: RUST_EDU_GET_ID failed");
-//!     close(fd);
-//!     return errno;
-//!   }
-//!   printf("EDU ID: 0x%08x\n", val);
+//! struct drm_edu_test_irq {
+//!     __u32 val;
+//! };
 //!
-//!   val = 0x12345678;
-//!   printf("Testing card liveness with value 0x%08x\n", val);
-//!   ret = ioctl(fd, RUST_EDU_TEST_LIVENESS, &val);
-//!   if (ret < 0) {
-//!     perror("ioctl: RUST_EDU_TEST_LIVENESS failed");
-//!     close(fd);
-//!     return errno;
-//!   }
-//!   printf("Liveness returned: 0x%08x (expected 0x%08x)\n", val, ~0x12345678);
+//! #define DRM_EDU_GET_ID             0x00
+//! #define DRM_EDU_TEST_LIVENESS      0x01
+//! #define DRM_EDU_COMPUTE_FACTORIAL  0x02
+//! #define DRM_EDU_TEST_IRQ           0x03
 //!
-//!   val = 5;
-//!   printf("Computing factorial of %u\n", val);
-//!   ret = ioctl(fd, RUST_EDU_COMPUTE_FACTORIAL, &val);
-//!   if (ret < 0) {
-//!     perror("ioctl: RUST_EDU_COMPUTE_FACTORIAL failed");
-//!     close(fd);
-//!     return errno;
-//!   }
-//!   printf("Factorial of 5 is %u (expected 120)\n", val);
+//! #define DRM_IOCTL_EDU_GET_ID            DRM_IOR(DRM_COMMAND_BASE + DRM_EDU_GET_ID, struct drm_edu_get_id)
+//! #define DRM_IOCTL_EDU_TEST_LIVENESS     DRM_IOWR(DRM_COMMAND_BASE + DRM_EDU_TEST_LIVENESS, struct drm_edu_test_liveness)
+//! #define DRM_IOCTL_EDU_COMPUTE_FACTORIAL DRM_IOWR(DRM_COMMAND_BASE + DRM_EDU_COMPUTE_FACTORIAL, struct drm_edu_compute_factorial)
+//! #define DRM_IOCTL_EDU_TEST_IRQ          DRM_IOW(DRM_COMMAND_BASE + DRM_EDU_TEST_IRQ, struct drm_edu_test_irq)
 //!
-//!   val = 0x100;
-//!   printf("Testing IRQ raise with value 0x%08x\n", val);
-//!   ret = ioctl(fd, RUST_EDU_TEST_IRQ, &val);
-//!   if (ret < 0) {
-//!     perror("ioctl: RUST_EDU_TEST_IRQ failed");
-//!     close(fd);
-//!     return errno;
-//!   }
-//!   printf("IRQ test triggered successfully\n");
-//!
-//!   close(fd);
-//!   printf("Success\n");
-//!   return 0;
+//! void print_usage(const char *prog) {
+//!     fprintf(stderr, "Usage:\n");
+//!     fprintf(stderr, "  %s id              - Get device ID\n", prog);
+//!     fprintf(stderr, "  %s live <value>    - Test liveness (writes value, expects ~value)\n", prog);
+//!     fprintf(stderr, "  %s fact <value>    - Compute factorial of value\n", prog);
+//!     fprintf(stderr, "  %s irq <value>     - Trigger interrupt with value\n", prog);
 //! }
-//! ```
+//!
+//! int main(int argc, char *argv[]) {
+//!     if (argc < 2) {
+//!         print_usage(argv[0]);
+//!         return 1;
+//!     }
+//!
+//!     int fd = open("/dev/dri/renderD128", O_RDWR);
+//!     if (fd < 0) {
+//!         perror("Failed to open /dev/dri/renderD128");
+//!         return 1;
+//!     }
+//!
+//!     const char *cmd = argv[1];
+//!
+//!     if (strcmp(cmd, "id") == 0) {
+//!         struct drm_edu_get_id arg = {0};
+//!         if (ioctl(fd, DRM_IOCTL_EDU_GET_ID, &arg) < 0) {
+//!             perror("GET_ID failed");
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         printf("Device ID: 0x%08x\n", arg.id);
+//!     } else if (strcmp(cmd, "live") == 0) {
+//!         if (argc < 3) {
+//!             fprintf(stderr, "Error: 'live' requires an integer argument.\n");
+//!             print_usage(argv[0]);
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         unsigned int val = strtoul(argv[2], NULL, 0);
+//!         struct drm_edu_test_liveness arg = { .val = val };
+//!         if (ioctl(fd, DRM_IOCTL_EDU_TEST_LIVENESS, &arg) < 0) {
+//!             perror("LIVENESS failed");
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         printf("Liveness: written=0x%08x, read=0x%08x (expected: 0x%08x)\n",
+//!                val, arg.inv, ~val);
+//!     } else if (strcmp(cmd, "fact") == 0) {
+//!         if (argc < 3) {
+//!             fprintf(stderr, "Error: 'fact' requires an integer argument.\n");
+//!             print_usage(argv[0]);
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         unsigned int val = strtoul(argv[2], NULL, 0);
+//!         struct drm_edu_compute_factorial arg = { .val = val };
+//!         if (ioctl(fd, DRM_IOCTL_EDU_COMPUTE_FACTORIAL, &arg) < 0) {
+//!             perror("FACTORIAL failed");
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         printf("Factorial: %u! = %u\n", val, arg.res);
+//!     } else if (strcmp(cmd, "irq") == 0) {
+//!         if (argc < 3) {
+//!             fprintf(stderr, "Error: 'irq' requires an integer argument.\n");
+//!             print_usage(argv[0]);
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         unsigned int val = strtoul(argv[2], NULL, 0);
+//!         struct drm_edu_test_irq arg = { .val = val };
+//!         if (ioctl(fd, DRM_IOCTL_EDU_TEST_IRQ, &arg) < 0) {
+//!             perror("IRQ failed");
+//!             close(fd);
+//!             return 1;
+//!         }
+//!         printf("IRQ triggered with value %u. Check dmesg for handled log.\n", val);
+//!     } else {
+//!         fprintf(stderr, "Error: Unknown command '%s'\n", cmd);
+//!         print_usage(argv[0]);
+//!         close(fd);
+//!         return 1;
+//!     }
+//!
+//!     close(fd);
+//!     return 0;
+//! }
+//! ````
 
 use kernel::{
-    device::Core,
-    fs::File,
-    io::{register, Io},
-    ioctl::{_IOC_SIZE, _IOR, _IOW, _IOWR},
-    irq,
-    miscdevice::{MiscDevice, MiscDeviceOptions, MiscDeviceRegistration},
-    pci,
+    device::{Bound, Core, DeviceContext},
+    drm,
+    drm::ioctl,
+    drm::Registered,
+    io::{poll, register, Io},
+    irq, pci,
     prelude::*,
     sync::aref::ARef,
-    sync::Arc,
-    types::ForeignOwnable,
-    uaccess::{UserPtr, UserSlice},
+    time, uapi,
 };
-
-const EDU_GET_ID: u32 = _IOR::<u32>('E' as u32, 0x00);
-const EDU_TEST_LIVENESS: u32 = _IOWR::<u32>('E' as u32, 0x01);
-const EDU_COMPUTE_FACTORIAL: u32 = _IOWR::<u32>('E' as u32, 0x02);
-const EDU_TEST_IRQ: u32 = _IOW::<u32>('E' as u32, 0x03);
 
 mod regs {
     use super::*;
-
     register! {
         pub(super) ID(u32) @ 0x00 {
             31:0 id;
         }
-
-        pub(super) LIVENESS(u32) @ 0x04 {
-            31:0 val;
-        }
-
-        pub(super) FACTORIAL(u32) @ 0x08 {
-            31:0 val;
-        }
-
-        pub(super) STATUS(u32) @ 0x20 {
-            0:0 computing;
-            7:7 irq;
-        }
-
-        pub(super) IRQ_STATUS(u32) @ 0x24 {
-            31:0 val;
-        }
-
-        pub(super) IRQ_RAISE(u32) @ 0x60 {
-            31:0 val;
-        }
+        // TODO: Define the rest of the registers here based on the Hardware Register Map.
     }
-
     pub(super) const END: usize = 0x80;
 }
 
-struct EduDevice {
+struct EduDriver;
+
+#[pin_data(PinnedDrop)]
+struct EduPciData<'bound> {
     pdev: ARef<pci::Device>,
-    bar: pci::DevresBar<{ regs::END }>,
+    _reg: drm::Registration<'bound, EduDriver>,
 }
 
 #[pin_data]
-struct EduIrqHandler {
-    edu: Arc<EduDevice>,
+struct EduDrmData<'drm> {
+    #[pin]
+    _irq: irq::Registration<'drm, EduIrqHandler<'drm>>,
 }
 
-impl irq::Handler for EduIrqHandler {
+#[pin_data]
+struct EduIrqHandler<'bound> {
+    pdev: &'bound pci::Device<Bound>,
+    bar: pci::Bar<'bound, { regs::END }>,
+}
+
+struct EduFile;
+
+#[pin_data]
+struct EduObject {}
+
+impl<'bound> irq::Handler for EduIrqHandler<'bound> {
     fn handle(&self) -> irq::IrqReturn {
-        let bar = match self.edu.bar.try_access() {
-            Some(bar) => bar,
-            None => return irq::IrqReturn::None,
-        };
-
-        let status = bar.read(regs::IRQ_STATUS).val();
-        if status == 0 {
-            return irq::IrqReturn::None;
-        }
-
-        dev_info!(
-            self.edu.pdev,
-            "QEMU EDU IRQ handled! status=0x{:x}\n",
-            status
-        );
-
-        bar.write_reg(regs::IRQ_STATUS::zeroed().with_val(status));
-
+        // TODO: Read regs::IRQ_STATUS. If it is 0, return IrqReturn::None.
+        // TODO: Log the interrupt using dev_info!.
+        // TODO: Write status back to IRQ_ACKNOWLEDGE to clear/acknowledge the interrupt.
         irq::IrqReturn::Handled
     }
 }
 
-#[pin_data]
-struct EduMiscDevice {
-    edu: Arc<EduDevice>,
+impl drm::file::DriverFile for EduFile {
+    type Driver = EduDriver;
+
+    fn open(_dev: &drm::Device<EduDriver>) -> Result<Pin<KBox<Self>>> {
+        Ok(KBox::new(Self, GFP_KERNEL)?.into())
+    }
 }
 
-#[vtable]
-impl MiscDevice for EduMiscDevice {
-    type Data = Arc<EduDevice>;
-    type Ptr = Pin<KBox<Self>>;
-
-    fn open(_file: &File, misc: &MiscDeviceRegistration<Self>) -> Result<Pin<KBox<Self>>> {
-        let edu = misc.data().clone();
-
-        dev_info!(edu.pdev, "Opening QEMU EDU PCI Misc Device\n");
-
-        KBox::try_pin_init(
-            try_pin_init! {
-                EduMiscDevice { edu }
-            },
-            GFP_KERNEL,
-        )
+impl EduFile {
+    pub(crate) fn get_id(
+        _dev: &drm::Device<EduDriver, Registered>,
+        reg_data: &EduDrmData<'_>,
+        arg: &mut uapi::drm_edu_get_id,
+        _file: &drm::File<Self>,
+    ) -> Result<u32> {
+        // TODO: Get the bar from reg_data._irq.handler().bar.
+        // TODO: Read regs::ID and write it to arg.id.
+        Ok(0)
     }
 
-    fn ioctl(
-        me: <Self::Ptr as ForeignOwnable>::Borrowed<'_>,
-        _file: &File,
-        cmd: u32,
-        arg: usize,
-    ) -> Result<isize> {
-        let arg = UserPtr::from_addr(arg);
-        let size = _IOC_SIZE(cmd);
-        let bar = me.edu.bar.try_access().ok_or(ENODEV)?;
+    pub(crate) fn test_liveness(
+        _dev: &drm::Device<EduDriver, Registered>,
+        reg_data: &EduDrmData<'_>,
+        arg: &mut uapi::drm_edu_test_liveness,
+        _file: &drm::File<Self>,
+    ) -> Result<u32> {
+        // TODO: Get the bar.
+        // TODO: Write arg.val to regs::LIVENESS.
+        // TODO: Read regs::LIVENESS and write it to arg.inv.
+        Ok(0)
+    }
 
-        match cmd {
-            EDU_GET_ID => {
-                let id = bar.read(regs::ID).id();
-                UserSlice::new(arg, size).writer().write::<u32>(&id)?;
-            }
-            EDU_TEST_LIVENESS => {
-                let mut reader = UserSlice::new(arg, size).reader();
-                let val = reader.read::<u32>()?;
-                bar.write_reg(regs::LIVENESS::zeroed().with_val(val));
-                let inv = bar.read(regs::LIVENESS).val();
-                UserSlice::new(arg, size).writer().write::<u32>(&inv)?;
-            }
-            EDU_COMPUTE_FACTORIAL => {
-                let mut reader = UserSlice::new(arg, size).reader();
-                let val = reader.read::<u32>()?;
-                bar.write_reg(regs::FACTORIAL::zeroed().with_val(val));
+    pub(crate) fn compute_factorial(
+        _dev: &drm::Device<EduDriver, Registered>,
+        reg_data: &EduDrmData<'_>,
+        arg: &mut uapi::drm_edu_compute_factorial,
+        _file: &drm::File<Self>,
+    ) -> Result<u32> {
+        // TODO: Get the bar.
+        // TODO: Write arg.val to regs::FACTORIAL.
+        // TODO: Poll STATUS.computing until it is 0 using read_poll_timeout.
+        // TODO: Read result from regs::FACTORIAL and write it to arg.res.
+        Ok(0)
+    }
 
-                while bar.read(regs::STATUS).computing() != 0 {
-                    core::hint::spin_loop();
-                }
-
-                let res = bar.read(regs::FACTORIAL).val();
-                UserSlice::new(arg, size).writer().write::<u32>(&res)?;
-            }
-            EDU_TEST_IRQ => {
-                let mut reader = UserSlice::new(arg, size).reader();
-                let val = reader.read::<u32>()?;
-                bar.write_reg(regs::IRQ_RAISE::zeroed().with_val(val));
-            }
-            _ => return Err(ENOTTY),
-        }
-
+    pub(crate) fn test_irq(
+        _dev: &drm::Device<EduDriver, Registered>,
+        reg_data: &EduDrmData<'_>,
+        arg: &mut uapi::drm_edu_test_irq,
+        _file: &drm::File<Self>,
+    ) -> Result<u32> {
+        // TODO: Get the bar.
+        // TODO: Write arg.val to regs::IRQ_RAISE to trigger interrupt.
         Ok(0)
     }
 }
 
-#[pin_data(PinnedDrop)]
-struct EduDriverData<'bound> {
-    pdev: ARef<pci::Device>,
-    edu: Arc<EduDevice>,
-    #[pin]
-    _irq: irq::Registration<'bound, EduIrqHandler>,
-    #[pin]
-    _miscdev: MiscDeviceRegistration<EduMiscDevice>,
+impl drm::gem::DriverObject for EduObject {
+    type Driver = EduDriver;
+    type Args = ();
+
+    fn new(
+        _dev: &drm::Device<EduDriver>,
+        _size: usize,
+        _args: Self::Args,
+    ) -> impl PinInit<Self, Error> {
+        try_pin_init!(EduObject {})
+    }
 }
 
-struct EduDriver;
+#[vtable]
+impl drm::Driver for EduDriver {
+    type Data = ();
+    type RegistrationData<'drm> = EduDrmData<'drm>;
+    type File = EduFile;
+    type Object = drm::gem::Object<EduObject>;
+    type ParentDevice<Ctx: DeviceContext> = pci::Device<Ctx>;
+
+    const INFO: drm::DriverInfo = drm::DriverInfo {
+        major: 0,
+        minor: 0,
+        patchlevel: 0,
+        name: c"qemu-edu-drm",
+        desc: c"QEMU PCI EDU DRM Driver",
+    };
+
+    const FEAT_RENDER: bool = true;
+
+    kernel::declare_drm_ioctls! {
+        (EDU_GET_ID, drm_edu_get_id, ioctl::RENDER_ALLOW, EduFile::get_id),
+        (EDU_TEST_LIVENESS, drm_edu_test_liveness, ioctl::RENDER_ALLOW, EduFile::test_liveness),
+        (EDU_COMPUTE_FACTORIAL, drm_edu_compute_factorial, ioctl::RENDER_ALLOW, EduFile::compute_factorial),
+        (EDU_TEST_IRQ, drm_edu_test_irq, ioctl::RENDER_ALLOW, EduFile::test_irq),
+    }
+}
+
+impl pci::Driver for EduDriver {
+    type IdInfo = ();
+    type Data<'bound> = EduPciData<'bound>;
+
+    const ID_TABLE: pci::IdTable<Self::IdInfo> = &PCI_TABLE;
+
+    fn probe<'bound>(
+        probe_pdev: &'bound pci::Device<Core<'_>>,
+        _info: Option<&'bound Self::IdInfo>,
+    ) -> impl PinInit<Self::Data<'bound>, Error> + 'bound {
+        dev_info!(
+            probe_pdev,
+            "Probe QEMU EDU PCI DRM driver sample (PCI ID: {}, 0x{:x}).\n",
+            probe_pdev.vendor_id(),
+            probe_pdev.device_id()
+        );
+
+        // TODO: Enable PCI device memory space using enable_device_mem().
+        // TODO: Set PCI device master using set_master().
+
+        // TODO: Map BAR 0 (size 0x80) using iomap_region_sized.
+
+        // TODO: Create UnregisteredDevice.
+
+        // TODO: Allocate 1 IRQ vector and get the vector.
+
+        // TODO: Request IRQ using request_irq (marked unsafe, needs safety comment!).
+        // Pass EduIrqHandler initialized with probe_pdev and bar.
+
+        // TODO: Create EduDrmData reg_data containing _irq <- irq_init.
+
+        // TODO: Create drm::Registration.
+
+        // TODO: Return EduPciData containing _reg.
+        // Hint: You will need to use `pin_init::pin_init_scope` to initialize the driver data.
+        Err(ENODEV)
+    }
+}
+
+#[pinned_drop]
+impl PinnedDrop for EduPciData<'_> {
+    fn drop(self: Pin<&mut Self>) {
+        dev_info!(self.pdev, "Remove QEMU EDU PCI DRM driver sample.\n");
+    }
+}
 
 kernel::pci_device_table!(
     PCI_TABLE,
@@ -255,80 +334,10 @@ kernel::pci_device_table!(
     [(pci::DeviceId::from_id(pci::Vendor::QEMU, 0x11e8), ())]
 );
 
-impl pci::Driver for EduDriver {
-    type IdInfo = ();
-    type Data<'bound> = EduDriverData<'bound>;
-
-    const ID_TABLE: pci::IdTable<Self::IdInfo> = &PCI_TABLE;
-
-    fn probe<'bound>(
-        pdev: &'bound pci::Device<Core<'_>>,
-        _info: Option<&'bound Self::IdInfo>,
-    ) -> impl PinInit<Self::Data<'bound>, Error> + 'bound {
-        pin_init::pin_init_scope(move || {
-            dev_info!(
-                pdev,
-                "Probe QEMU EDU PCI driver sample (PCI ID: {}, 0x{:x}).\n",
-                pdev.vendor_id(),
-                pdev.device_id()
-            );
-
-            pdev.enable_device_mem()?;
-            pdev.set_master();
-
-            let bar = pdev
-                .iomap_region_sized::<{ regs::END }>(0, c"qemu_edu")?
-                .into_devres()?;
-
-            let edu = Arc::new(
-                EduDevice {
-                    pdev: pdev.into(),
-                    bar,
-                },
-                GFP_KERNEL,
-            )?;
-
-            let vectors = pdev.alloc_irq_vectors(1, 1, pci::IrqTypes::all())?;
-            let vector = *vectors.start();
-
-            let edu_irq = edu.clone();
-            // SAFETY: `_irq` is stored in `EduDriverData` and dropped when the PCI driver is
-            // unbound; it is never forgotten.
-            let irq_init = unsafe {
-                pdev.request_irq(
-                    vector,
-                    irq::Flags::SHARED,
-                    c"qemu_edu",
-                    try_pin_init!(EduIrqHandler { edu: edu_irq }),
-                )
-            };
-
-            let options = MiscDeviceOptions {
-                name: c"qemu-edu",
-                parent: Some(pdev.as_ref()),
-            };
-
-            Ok(try_pin_init!(EduDriverData {
-                pdev: pdev.into(),
-                edu: edu.clone(),
-                _irq <- irq_init,
-                _miscdev <- MiscDeviceRegistration::register(options, edu.clone()),
-            }))
-        })
-    }
-}
-
-#[pinned_drop]
-impl PinnedDrop for EduDriverData<'_> {
-    fn drop(self: Pin<&mut Self>) {
-        dev_info!(self.pdev, "Remove QEMU EDU PCI driver sample.\n");
-    }
-}
-
 kernel::module_pci_driver! {
     type: EduDriver,
-    name: "rust_driver_pci_edu",
+    name: "rust_driver_pci_edu_drm",
     authors: ["Alice Ryhl"],
-    description: "QEMU PCI EDU driver with miscdevice interface",
+    description: "QEMU PCI EDU driver with DRM class device interface",
     license: "GPL v2",
 }

@@ -130,6 +130,17 @@ config SAMPLE_RUST_DRIVER_PCI_EDU
 
 	  If unsure, say N.
 
+config SAMPLE_RUST_DRIVER_PCI_EDU_DRM
+	tristate "PCI EDU Driver (DRM interface)"
+	depends on PCI && DRM
+	help
+	  This option builds the Rust PCI EDU driver sample using the DRM class
+	  device.
+
+	  To compile this as a module, choose M here:
+	  the module will be called rust_driver_pci_edu_drm.
+
+	  If unsure, say N.
 
 config SAMPLE_RUST_DRIVER_PLATFORM
 	tristate "Platform Driver"
