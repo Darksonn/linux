@@ -25,7 +25,8 @@ echo "Booting QEMU VM with $KERNEL and $IMG..."
 set +e
 timeout 600 qemu-system-x86_64 \
     -machine q35,acpi=on \
-    -accel kvm:tcg \
+    -accel kvm \
+    -accel tcg \
     -kernel "$KERNEL" \
     -drive "file=$IMG,format=raw,if=virtio" \
     -append "root=/dev/vda console=ttyS0 acpi=force panic=-1" \
