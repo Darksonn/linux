@@ -12,12 +12,15 @@ FAILED=0
 
 run_test() {
     local name="$1"
-    shift
+    local test_bin="$2"
+    shift 2
+    local dir
+    dir="$(dirname "$test_bin")"
     echo "=========================================="
     echo "=== Running test: $name ==="
     echo "=========================================="
     set +e
-    "$@"
+    (cd "$dir" && "$test_bin" "$@")
     local rc=$?
     set -e
     if [ $rc -eq 0 ]; then
