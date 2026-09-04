@@ -53,5 +53,6 @@ For each commit in the specified range:
 The CI pipeline (`.github/workflows/ci.yml`) performs:
 *   **Build:** Builds the kernel with `LLVM=1` and `CLIPPY=1` for `x86_64`, `arm64`, `riscv`, etc.
 *   **Test:** Runs KUnit tests under QEMU for `x86_64` and `arm64`.
+*   **Selftests:** Builds x86_64 kernel and modules, generates an on-demand Debian disk image, and runs userspace kernel selftests (including Rust sample module probe tests) under QEMU.
 *   **Checkpatch:** Runs `scripts/checkpatch.pl` on the commit.
 *   **Rustfmt:** Checks code formatting using `make rustfmtcheck`.

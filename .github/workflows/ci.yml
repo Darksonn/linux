@@ -169,6 +169,75 @@ jobs:
       run: |
         make -C linux O=../out ARCH=${{ matrix.arch }} CROSS_COMPILE=${{ matrix.cross_compile }} -j$(nproc)
 
+  selftests:
+    name: selftests (x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: true
+    - name: Resolve bindgen version
+      run: |
+        echo "BINDGEN_VERSION=$(gh api repos/rust-lang/rust-bindgen/releases/latest --jq .tag_name | sed 's/^v//')" >> $GITHUB_ENV
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm qemu-system-x86 debootstrap debian-archive-keyring
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rust-src
+    - name: Cache bindgen
+      id: cache-bindgen
+      uses: actions/cache@v5
+      with:
+        path: ~/.cargo/bin/bindgen
+        key: bindgen-${{ runner.os }}-${{ runner.arch }}-${{ env.BINDGEN_VERSION }}
+    - name: Install bindgen
+      if: steps.cache-bindgen.outputs.cache-hit != 'true'
+      run: cargo install bindgen-cli --version ${{ env.BINDGEN_VERSION }}
+    - name: Configure kernel
+      run: |
+        mkdir -p out
+        make -C linux O=../out LLVM=1 ARCH=x86_64 allnoconfig
+
+        MERGE_LIST="configs/x86_64.config configs/generic.config configs/vm.config"
+        linux/scripts/kconfig/merge_config.sh -m -O out out/.config $MERGE_LIST
+        make -C linux O=../out LLVM=1 ARCH=x86_64 olddefconfig
+        cp out/.config config
+    - name: Print kernel configuration
+      run: cat config
+    - name: Load from cache
+      uses: actions/cache@v5
+      with:
+        path: out
+        key: kernel-selftests-x86_64-${{ hashFiles('out/.config') }}-${{ github.sha }}
+        restore-keys: |
+          kernel-selftests-x86_64-${{ hashFiles('out/.config') }}-
+    - name: Set up incremental compilation
+      run: |
+        cmp -s config out/.config || cp config out/.config
+        cd linux && python3 ../.github/scripts/timestamp.py
+    - name: Check Rust availability
+      run: make -C linux O=../out LLVM=1 ARCH=x86_64 rustavailable
+    - name: Build kernel and modules
+      run: |
+        make -C linux O=../out LLVM=1 ARCH=x86_64 -j$(nproc)
+    - name: Install kernel modules
+      run: |
+        mkdir -p modules
+        make -C linux O=../out LLVM=1 ARCH=x86_64 modules_install INSTALL_MOD_PATH=../modules
+    - name: Create Debian disk image
+      run: |
+        sudo .github/scripts/create-image.sh debian.img modules
+    - name: Run selftests in QEMU
+      run: |
+        .github/scripts/run_qemu.sh debian.img out/arch/x86/boot/bzImage
+
   rustfmt:
     runs-on: ubuntu-latest
     steps:
