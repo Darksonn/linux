@@ -32,7 +32,7 @@ echo "Configuring hostname and fstab..."
 echo "debian-vm" > "$DIR/etc/hostname"
 mkdir -p "$DIR/mnt"
 cat <<EOF > "$DIR/etc/fstab"
-/dev/root / ext4 defaults 0 0
+/dev/vda / ext4 defaults 0 1
 hostshare /mnt 9p trans=virtio,version=9p2000.L,nofail 0 0
 EOF
 
