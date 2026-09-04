@@ -227,6 +227,13 @@ jobs:
     - name: Build kernel and modules
       run: |
         make -C linux O=../out LLVM=1 ARCH=x86_64 -j$(nproc)
+    - name: Install kernel headers
+      run: |
+        make -C linux O=../out LLVM=1 ARCH=x86_64 headers
+    - name: Build selftests
+      run: |
+        make -C linux/tools/testing/selftests KHDR_INCLUDES="-isystem $PWD/out/usr/include" LDFLAGS="-static" TARGETS="filesystems/binderfs pidfd" -j$(nproc)
+        make -C linux/tools/testing/selftests/memfd KHDR_INCLUDES="-isystem $PWD/out/usr/include" OUTPUT=. LDFLAGS="-static" ./memfd_test
     - name: Install kernel modules
       run: |
         mkdir -p modules
