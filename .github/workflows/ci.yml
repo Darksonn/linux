@@ -26,7 +26,7 @@ jobs:
           - arch: x86_64
             config: generic.config
             bindgen: latest
-            rustc: 1.78.0
+            rustc: 1.85.0
           - arch: x86_64
             config: generic.config
             bindgen: latest
