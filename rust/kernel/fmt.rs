@@ -66,15 +66,23 @@ pub trait Pointer {
 /// printed instead (for debugging purposes).
 pub struct HashedPtr<T: ?Sized>(pub *const T);
 
-impl<T: ?Sized> Pointer for HashedPtr<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+impl<T: ?Sized> HashedPtr<T> {
+    fn format_inner(&self, f: &mut Formatter<'_>, prefix: bool) -> Result {
         use crate::str::CStrExt as _;
 
         let mut buf = [0u8; 32];
 
-        // Use `%#0*p` for the `0x` prefix and zero-padding; `+2` compensates for
-        // the prefix counting toward the field width.
-        let default_width = (2 * size_of::<usize>() + 2) as c_int;
+        // When `prefix` is true (e.g. `{:#x}` or `{:p}`), we format with `%#0*p`
+        // which prepends the `0x` prefix. In that case, `default_width` is `2 * size_of::<usize>() + 2`
+        // because `scnprintf` counts the 2 prefix characters ("0x") toward the field width.
+        // Without prefix (e.g. `{:x}`), we format with `%0*p` without the prefix, so
+        // `default_width` is `2 * size_of::<usize>()`. In both cases, exactly 2 hex digits per
+        // byte are output.
+        let (fmt_str, default_width) = if prefix {
+            (c"%#0*p", (2 * size_of::<usize>() + 2) as c_int)
+        } else {
+            (c"%0*p", (2 * size_of::<usize>()) as c_int)
+        };
         let width = match (f.sign_aware_zero_pad(), f.width()) {
             (true, Some(w)) if w > 0 => w.min(buf.len() - 1) as c_int,
             _ => default_width,
@@ -88,21 +96,35 @@ impl<T: ?Sized> Pointer for HashedPtr<T> {
             crate::bindings::scnprintf(
                 buf.as_mut_ptr().cast(),
                 buf.len(),
-                c"%#0*p".as_char_ptr(),
+                fmt_str.as_char_ptr(),
                 width,
                 self.0.cast::<c_void>(),
             )
         };
 
-        // SAFETY: `%#0*p` produces only ASCII, which is valid UTF-8.
+        // SAFETY: `%#0*p` and `%0*p` produce only ASCII, which is valid UTF-8.
         let s = unsafe { core::str::from_utf8_unchecked(&buf[..len as usize]) };
 
         if f.sign_aware_zero_pad() {
-            // `scnprintf` already applied the width and zero-padding via `%#0*p`.
+            // `scnprintf` already applied the width and zero-padding via the format string.
             f.write_str(s)
         } else {
             f.pad(s)
         }
+    }
+}
+
+impl<T: ?Sized> Pointer for HashedPtr<T> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        self.format_inner(f, true)
+    }
+}
+
+impl<T: ?Sized> LowerHex for HashedPtr<T> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        self.format_inner(f, f.alternate())
     }
 }
 
@@ -226,6 +248,7 @@ mod tests {
         pub(super) const PTR_VAL_NO_CRNG: &str = "(____ptrval____)";
         pub(super) const HASHED_PREFIX: &str = "0x00000000";
         pub(super) const RAW_POINTER: &str = "0xffffffffdeadbeef";
+        pub(super) const RAW_POINTER_NO_PREFIX: &str = "ffffffffdeadbeef";
         pub(super) const PADDED_RIGHT: &str = "      0xffffffffdeadbeef";
         pub(super) const ZERO_PADDED: &str = "0x000000ffffffffdeadbeef";
         pub(super) const HASHED_PADDED_RIGHT_PREFIX: &str = "      ";
@@ -239,6 +262,7 @@ mod tests {
         pub(super) const PTR_VAL_NO_CRNG: &str = "(ptrval)";
         pub(super) const HASHED_PREFIX: &str = "0x";
         pub(super) const RAW_POINTER: &str = "0xdeadbeef";
+        pub(super) const RAW_POINTER_NO_PREFIX: &str = "deadbeef";
         pub(super) const PADDED_RIGHT: &str = "              0xdeadbeef";
         pub(super) const ZERO_PADDED: &str = "0x00000000000000deadbeef";
         pub(super) const HASHED_PADDED_RIGHT_PREFIX: &str = "              ";
@@ -259,6 +283,12 @@ mod tests {
             let cstr = CString::try_from_fmt(fmt!("{:p}", ptr))?;
             assert_eq!(cstr.to_str()?, expected::RAW_POINTER);
 
+            let cstr = CString::try_from_fmt(fmt!("{:x}", super::HashedPtr(ptr)))?;
+            assert_eq!(cstr.to_str()?, expected::RAW_POINTER_NO_PREFIX);
+
+            let cstr = CString::try_from_fmt(fmt!("{:#x}", super::HashedPtr(ptr)))?;
+            assert_eq!(cstr.to_str()?, expected::RAW_POINTER);
+
             let cstr = CString::try_from_fmt(fmt!("{:>24p}", ptr))?;
             assert_eq!(cstr.to_str()?, expected::PADDED_RIGHT);
 
@@ -276,6 +306,15 @@ mod tests {
             }
             assert!(formatted.starts_with(expected::HASHED_PREFIX));
             assert_ne!(formatted, expected::RAW_POINTER);
+
+            let cstr_alt_x = CString::try_from_fmt(fmt!("{:#x}", super::HashedPtr(ptr)))?;
+            assert_eq!(cstr_alt_x.to_str()?, formatted);
+
+            let cstr_x = CString::try_from_fmt(fmt!("{:x}", super::HashedPtr(ptr)))?;
+            let formatted_x = cstr_x.to_str()?;
+            assert_eq!(formatted_x.len(), expected::RAW_POINTER_NO_PREFIX.len());
+            assert!(!formatted_x.starts_with("0x"));
+            assert_eq!(&formatted[2..], formatted_x);
 
             let cstr = CString::try_from_fmt(fmt!("{:>24p}", ptr))?;
             assert!(cstr
