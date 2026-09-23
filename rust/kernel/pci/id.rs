@@ -531,6 +531,7 @@ define_all_pci_vendors! {
     QMI                      = bindings::PCI_VENDOR_ID_QMI,                      // 0x1a32
     AZWAVE                   = bindings::PCI_VENDOR_ID_AZWAVE,                   // 0x1a3b
     REDHAT_QUMRANET          = bindings::PCI_VENDOR_ID_REDHAT_QUMRANET,          // 0x1af4
+    QEMU                     = 0x1234,                                           // 0x1234
     ASMEDIA                  = bindings::PCI_VENDOR_ID_ASMEDIA,                  // 0x1b21
     REDHAT                   = bindings::PCI_VENDOR_ID_REDHAT,                   // 0x1b36
     WCHIC                    = bindings::PCI_VENDOR_ID_WCHIC,                    // 0x1c00
