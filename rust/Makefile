@@ -679,8 +679,8 @@ rust-analyzer:
 		> rust-project.json
 
 redirect-intrinsics = \
-	__addsf3 __eqsf2 __extendsfdf2 __gesf2 __lesf2 __ltsf2 __mulsf3 __nesf2 __truncdfsf2 __unordsf2 \
-	__adddf3 __eqdf2 __ledf2 __ltdf2 __muldf3 __unorddf2 \
+	__addsf3 __eqsf2 __extendsfdf2 __gesf2 __gtsf2 __lesf2 __ltsf2 __mulsf3 __nesf2 __truncdfsf2 __unordsf2 fmaximum_numf fminimum_numf \
+	__adddf3 __eqdf2 __gtdf2 __ledf2 __ltdf2 __muldf3 __unorddf2 fmaximum_num fminimum_num \
 	__muloti4 __multi3 \
 	__udivmodti4 __udivti3 __umodti3
 
