@@ -212,6 +212,13 @@ use core::{
 mod builder;
 pub use self::builder::Builder;
 
+mod scoped;
+pub use self::scoped::{
+    new_scoped_work,
+    ScopedWork,
+    ScopedWorkItem, //
+};
+
 /// Creates a [`Work`] initialiser with the given name and a newly-created lock class.
 #[macro_export]
 macro_rules! new_work {
@@ -284,10 +291,49 @@ impl Queue {
     where
         W: RawWorkItem<ID> + Send + 'static,
     {
+        // SAFETY: `W: 'static`, so everything borrowed by `W` remains valid forever.
+        unsafe { self.enqueue_raw(w) }
+    }
+
+    /// Enqueues a [`ScopedWork`] item.
+    ///
+    /// Unlike [`Queue::enqueue`], this does not require the work item to be `'static`. This is
+    /// sound because a [`ScopedWork`] cancels itself synchronously when it is dropped, and
+    /// [`ScopedWork::new`] requires that this destructor runs before any lifetime in `T` expires.
+    ///
+    /// This may fail if the work item is already enqueued in a workqueue.
+    ///
+    /// The work item will be submitted using `WORK_CPU_UNBOUND`.
+    #[inline]
+    pub fn enqueue_scoped<T>(&self, w: &ScopedWork<T>) -> bool
+    where
+        T: ScopedWorkItem + Sync,
+    {
+        // SAFETY: The `ScopedWork` destructor calls `cancel_work_sync()`, and `ScopedWork::new`
+        // guarantees that this destructor runs before any lifetime in `T` expires. Hence everything
+        // borrowed by `T` remains valid until the work item has run to completion or has been
+        // cancelled.
+        unsafe { self.enqueue_raw(w) }
+    }
+
+    /// Enqueues a work item without requiring it to be `'static`.
+    ///
+    /// # Safety
+    ///
+    /// Everything borrowed by `W` must remain valid until the work item has run to completion or
+    /// has been cancelled.
+    #[inline]
+    unsafe fn enqueue_raw<W, const ID: u64>(&self, w: W) -> W::EnqueueOutput
+    where
+        W: RawWorkItem<ID> + Send,
+    {
         let queue_ptr = self.0.get();
 
         // SAFETY: We only return `false` if the `work_struct` is already in a workqueue. The other
-        // `__enqueue` requirements are not relevant since `W` is `Send` and static.
+        // `__enqueue` requirements are not relevant since `W` is `Send` and the caller guarantees
+        // that everything borrowed by `W` remains valid until the work item has run to completion
+        // or has been cancelled, so the function pointer is never called after a lifetime in `W`
+        // expires.
         //
         // The call to `bindings::queue_work_on` will dereference the provided raw pointer, which
         // is ok because `__enqueue` guarantees that the pointer is valid for the duration of this
