@@ -41,6 +41,16 @@ config SAMPLE_RUST_MISC_DEVICE
 
 	  If unsure, say N.
 
+config SAMPLE_RUST_MESSAGE_BOARD
+	tristate "Message board misc device exercise"
+	help
+	  This option builds the Rust message board misc device exercise stub.
+
+	  To compile this as a module, choose M here:
+	  the module will be called rust_message_board.
+
+	  If unsure, say N.
+
 config SAMPLE_RUST_PRINT
 	tristate "Printing macros"
 	help
