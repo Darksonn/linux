@@ -52,7 +52,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm qemu-system-x86 qemu-system-aarch64
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc clang lld llvm qemu-system-x86 qemu-system-arm
     - name: Install Rust
       uses: dtolnay/rust-toolchain@master
       with:
