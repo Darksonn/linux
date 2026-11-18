@@ -27,6 +27,7 @@ timeout 600 qemu-system-x86_64 \
     -machine q35,acpi=on \
     -accel kvm \
     -accel tcg \
+    -cpu max \
     -kernel "$KERNEL" \
     -drive "file=$IMG,format=raw,if=virtio" \
     -append "root=/dev/vda console=ttyS0 acpi=force panic=-1" \
