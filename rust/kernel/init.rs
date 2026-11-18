@@ -204,14 +204,14 @@ pub trait InPlaceInit<T>: Sized {
 /// use pin_init::init_zeroed;
 /// struct BigBuf {
 ///     big: KBox<[u8; 1024 * 1024 * 1024]>,
-///     small: [u8; 1024 * 1024],
+///     small: [u8; 1024],
 /// }
 ///
 /// impl BigBuf {
 ///     fn new() -> impl Init<Self, Error> {
 ///         try_init!(Self {
 ///             big: KBox::init(init_zeroed(), GFP_KERNEL)?,
-///             small: [0; 1024 * 1024],
+///             small: [0; 1024],
 ///         }? Error)
 ///     }
 /// }
@@ -255,7 +255,7 @@ macro_rules! try_init {
 /// #[pin_data]
 /// struct BigBuf {
 ///     big: KBox<[u8; 1024 * 1024 * 1024]>,
-///     small: [u8; 1024 * 1024],
+///     small: [u8; 1024],
 ///     ptr: *mut u8,
 /// }
 ///
@@ -263,7 +263,7 @@ macro_rules! try_init {
 ///     fn new() -> impl PinInit<Self, Error> {
 ///         try_pin_init!(Self {
 ///             big: KBox::init(init_zeroed(), GFP_KERNEL)?,
-///             small: [0; 1024 * 1024],
+///             small: [0; 1024],
 ///             ptr: core::ptr::null_mut(),
 ///         }? Error)
 ///     }
