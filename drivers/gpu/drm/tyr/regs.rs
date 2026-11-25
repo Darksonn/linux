@@ -32,6 +32,18 @@ pub(crate) fn join_u64(lo: u32, hi: u32) -> u64 {
     (u64::from(lo)) | ((u64::from(hi)) << 32)
 }
 
+/// Split a 64-bit value into its low and high 32-bit halves.
+pub(crate) fn split_u64(value: u64) -> (u32, u32) {
+    // CAST: The upper 32 bits are dropped on purpose. They are returned in `hi`.
+    #[expect(clippy::as_conversions)]
+    let lo = value as u32;
+    // CAST: After the shift, the value fits in 32 bits.
+    #[expect(clippy::as_conversions)]
+    let hi = (value >> 32) as u32;
+
+    (lo, hi)
+}
+
 /// Read a logical 64-bit value from split 32-bit registers without tearing.
 pub(crate) fn read_u64_no_tearing(lo_read: impl Fn() -> u32, hi_read: impl Fn() -> u32) -> u64 {
     loop {

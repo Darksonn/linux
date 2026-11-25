@@ -47,6 +47,7 @@ use crate::{
     regs::{
         mmu_control::mmu_as_control,
         mmu_control::mmu_as_control::*,
+        split_u64,
         MAX_AS, //
     },
     slot::{
@@ -255,34 +256,34 @@ impl<'drm> AddressSpaceManager<'drm> {
 
         let io = &*self.iomem;
 
-        let transtab = as_config.transtab;
+        let (transtab_lo, transtab_hi) = split_u64(as_config.transtab);
         io.write(
             TRANSTAB_LO::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSTAB_LO::from_raw(transtab as u32),
+            TRANSTAB_LO::from_raw(transtab_lo),
         );
         io.write(
             TRANSTAB_HI::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSTAB_HI::from_raw((transtab >> 32) as u32),
+            TRANSTAB_HI::from_raw(transtab_hi),
         );
 
-        let transcfg = as_config.transcfg;
+        let (transcfg_lo, transcfg_hi) = split_u64(as_config.transcfg);
         io.write(
             TRANSCFG_LO::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSCFG_LO::from_raw(transcfg as u32),
+            TRANSCFG_LO::from_raw(transcfg_lo),
         );
         io.write(
             TRANSCFG_HI::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSCFG_HI::from_raw((transcfg >> 32) as u32),
+            TRANSCFG_HI::from_raw(transcfg_hi),
         );
 
-        let memattr = as_config.memattr;
+        let (memattr_lo, memattr_hi) = split_u64(as_config.memattr);
         io.write(
             MEMATTR_LO::try_at(as_nr).ok_or(EINVAL)?,
-            MEMATTR_LO::from_raw(memattr as u32),
+            MEMATTR_LO::from_raw(memattr_lo),
         );
         io.write(
             MEMATTR_HI::try_at(as_nr).ok_or(EINVAL)?,
-            MEMATTR_HI::from_raw((memattr >> 32) as u32),
+            MEMATTR_HI::from_raw(memattr_hi),
         );
 
         self.as_send_cmd_and_wait(as_nr, MmuCommand::Update)?;
@@ -322,14 +323,15 @@ impl<'drm> AddressSpaceManager<'drm> {
         let transcfg = TRANSCFG::zeroed()
             .with_mode(AddressSpaceMode::Unmapped)
             .into_raw();
+        let (transcfg_lo, transcfg_hi) = split_u64(transcfg);
 
         io.write(
             TRANSCFG_LO::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSCFG_LO::from_raw(transcfg as u32),
+            TRANSCFG_LO::from_raw(transcfg_lo),
         );
         io.write(
             TRANSCFG_HI::try_at(as_nr).ok_or(EINVAL)?,
-            TRANSCFG_HI::from_raw((transcfg >> 32) as u32),
+            TRANSCFG_HI::from_raw(transcfg_hi),
         );
 
         self.as_send_cmd_and_wait(as_nr, MmuCommand::Update)?;
@@ -405,14 +407,15 @@ impl<'drm> AddressSpaceManager<'drm> {
             .try_with_size(lockaddr_size)?
             .try_with_base(lockaddr_base_field)?
             .into_raw();
+        let (lockaddr_lo, lockaddr_hi) = split_u64(lockaddr_val);
 
         io.write(
             LOCKADDR_LO::try_at(as_nr).ok_or(EINVAL)?,
-            LOCKADDR_LO::from_raw(lockaddr_val as u32),
+            LOCKADDR_LO::from_raw(lockaddr_lo),
         );
         io.write(
             LOCKADDR_HI::try_at(as_nr).ok_or(EINVAL)?,
-            LOCKADDR_HI::from_raw((lockaddr_val >> 32) as u32),
+            LOCKADDR_HI::from_raw(lockaddr_hi),
         );
 
         self.as_send_cmd_and_wait(as_nr, MmuCommand::Lock)
