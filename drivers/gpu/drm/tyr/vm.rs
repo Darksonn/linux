@@ -80,11 +80,13 @@ impl_flags!(
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum VmFlag {
         /// Map as read-only.
-        Readonly = uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_READONLY as u32,
+        Readonly =
+            cv!(uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_READONLY => u32),
         /// Map as non-executable.
-        Noexec = uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_NOEXEC as u32,
+        Noexec = cv!(uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_NOEXEC => u32),
         /// Map as uncached.
-        Uncached = uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_UNCACHED as u32,
+        Uncached =
+            cv!(uapi::drm_panthor_vm_bind_op_flags_DRM_PANTHOR_VM_BIND_OP_MAP_UNCACHED => u32),
     }
 );
 

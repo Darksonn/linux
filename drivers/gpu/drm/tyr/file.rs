@@ -79,7 +79,7 @@ impl TyrDrmFileData {
         if devquery.pointer == 0 {
             match devquery.type_ {
                 uapi::drm_panthor_dev_query_type_DRM_PANTHOR_DEV_QUERY_GPU_INFO => {
-                    devquery.size = core::mem::size_of_val(&reg_data.gpu_info) as u32;
+                    devquery.size = cv!(size_of::<uapi::drm_panthor_gpu_info>() => u32);
                     Ok(0)
                 }
                 _ => Err(EINVAL),

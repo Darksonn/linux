@@ -751,11 +751,11 @@ pub(crate) mod gpu_control {
     #[repr(u8)]
     pub(crate) enum CoherencyMode {
         /// ACE-Lite coherency protocol.
-        AceLite = uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_ACE_LITE as u8,
+        AceLite = cv!(uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_ACE_LITE => u8),
         /// ACE coherency protocol.
-        Ace = uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_ACE as u8,
+        Ace = cv!(uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_ACE => u8),
         /// No coherency protocol.
-        None = uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_NONE as u8,
+        None = cv!(uapi::drm_panthor_gpu_coherency_DRM_PANTHOR_GPU_COHERENCY_NONE => u8),
     }
 
     impl TryFrom<Bounded<u32, 32>> for CoherencyMode {
