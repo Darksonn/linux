@@ -788,7 +788,7 @@ impl<'drm> DriverGpuVm for GpuVmData<'drm> {
 /// can be mapped before we hit the 2MB boundary. Or, if mapping 2MB pages,
 /// figure out how many pages can be mapped before hitting the 1GB boundary
 /// Returns the page size (4KB or 2MB) and the number of pages that can be mapped at that size.
-fn get_pgsize(addr: u64, size: u64) -> (u64, u64) {
+fn get_pgsize(addr: u64, size: u64) -> (usize, usize) {
     // Get the distance to the next boundary of 2MB block
     let blk_offset_2m = addr.wrapping_neg() % u64::SZ_2M;
 
@@ -799,7 +799,11 @@ fn get_pgsize(addr: u64, size: u64) -> (u64, u64) {
         } else {
             u64::min(blk_offset_2m, size) / u64::SZ_4K
         };
-        return (u64::SZ_4K, pgcount);
+        // CAST: This path covers less than one 2MB block, so `pgcount` is below 512.
+        #[expect(clippy::as_conversions)]
+        let pgcount = pgcount as usize;
+
+        return (usize::SZ_4K, pgcount);
     }
 
     let blk_offset_1g = addr.wrapping_neg() % u64::SZ_1G;
@@ -809,8 +813,11 @@ fn get_pgsize(addr: u64, size: u64) -> (u64, u64) {
         blk_offset_1g
     };
     let pgcount = u64::min(blk_offset, size) / u64::SZ_2M;
+    // CAST: `blk_offset` is at most 1GB, so `pgcount` is at most 512.
+    #[expect(clippy::as_conversions)]
+    let pgcount = pgcount as usize;
 
-    (u64::SZ_2M, pgcount)
+    (usize::SZ_2M, pgcount)
 }
 
 /// Maps a physical address range into the page table at the specified virtual address.
@@ -869,8 +876,8 @@ fn pt_map(
             pt.map_pages(
                 curr_iova,
                 curr_paddr as PhysAddr,
-                pgsize as usize,
-                pgcount as usize,
+                pgsize,
+                pgcount,
                 prot,
                 GFP_KERNEL,
             )
@@ -933,7 +940,7 @@ fn pt_unmap(dev: &Device, pt: &IoPageTable<'_, ARM64LPAES1>, range: Range<u64>) 
         // We know that this page table has one or more consecutive mappings
         // starting at `iova` with the total size of `pgcount * pgsize` because
         // gpuvm callbacks provide exactly the range that was previously mapped.
-        let unmapped = unsafe { pt.unmap_pages(iova_usize, pgsize as usize, pgcount as usize) };
+        let unmapped = unsafe { pt.unmap_pages(iova_usize, pgsize, pgcount) };
 
         if unmapped == 0 {
             dev_err!(dev, "Failed to unmap any bytes at iova {:#x}", iova_usize);
