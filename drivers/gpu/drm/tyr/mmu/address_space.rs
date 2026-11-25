@@ -362,7 +362,7 @@ impl<'drm> AddressSpaceManager<'drm> {
         // Count the number of trailing zero bits (zeros at the right/least-significant
         // end of the binary representation). For a power-of-two value, this equals the
         // base-2 exponent (e.g., 32 KiB = 2^15 → 15).
-        let lock_region_min_size_log2 = lock_region_min_size.trailing_zeros() as u8;
+        let lock_region_min_size_log2 = lock_region_min_size.trailing_zeros();
 
         // XOR the first and last addresses to identify which bits differ between them.
         // The highest set bit in the result determines the exponent of the smallest
@@ -373,11 +373,11 @@ impl<'drm> AddressSpaceManager<'drm> {
         //   highest set bit in 0x3FFF is bit 13
         //   minimum region size = 2^(13 + 1) = 16 KiB
         let addr_xor = region.start ^ (region.end - 1);
-        let region_size_log2 = 64 - addr_xor.leading_zeros() as u8;
+        let region_size_log2 = 64 - addr_xor.leading_zeros();
 
         let lock_region_log2 = core::cmp::max(region_size_log2, lock_region_min_size_log2);
 
-        let lock_region_size = 1u64.checked_shl(lock_region_log2.into()).ok_or(EINVAL)?;
+        let lock_region_size = 1u64.checked_shl(lock_region_log2).ok_or(EINVAL)?;
         // Align the LOCKADDR base address down to the lock region size (1 << lock_region_log2).
         //
         // The MMU ignores the low lock_region_log2 bits of LOCKADDR base, so ensure
