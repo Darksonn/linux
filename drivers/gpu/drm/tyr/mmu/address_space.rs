@@ -78,7 +78,7 @@ pub(crate) struct VmAsData<'drm> {
     as_seat: LockedSeat<AddressSpaceManager<'drm>, MAX_AS>,
 
     /// Virtual address bits for this address space.
-    va_bits: u8,
+    va_bits: u32,
 
     /// The page table which maps GPU virtual addresses to physical addresses for this VM.
     #[pin]
@@ -105,7 +105,7 @@ impl<'drm> VmAsData<'drm> {
 
         try_pin_init!(Self {
             as_seat: LockedBy::new(&mmu.as_manager, Seat::NoSeat),
-            va_bits: va_bits as u8,
+            va_bits,
             page_table <- page_table_init,
         }? Error)
     }
