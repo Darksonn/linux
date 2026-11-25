@@ -144,7 +144,7 @@ impl TryFrom<u32> for VmMapFlags {
     type Error = Error;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        let valid = VmFlag::Readonly as u32 | VmFlag::Noexec as u32 | VmFlag::Uncached as u32;
+        let valid = Self::all_bits();
 
         if value & !valid != 0 {
             return Err(EINVAL);
