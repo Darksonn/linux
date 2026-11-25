@@ -47,7 +47,7 @@ pub(crate) struct SeatInfo {
     /// it means the object has been evicted from the hardware slot,
     /// and a new slot needs to be acquired to make this object
     /// resident again.
-    slot: u8,
+    slot: usize,
 
     /// Sequence number encoding the last time this seat was active.
     /// We also use it to check if a slot is still bound to a seat.
@@ -98,7 +98,7 @@ impl Seat {
     /// If the seat is not `Seat::Active` we can't trust the
     /// `SeatInfo`. In that case `None` is returned, otherwise
     /// `Some(SeatInfo::slot)` is returned.
-    pub(crate) fn slot(&self) -> Option<u8> {
+    pub(crate) fn slot(&self) -> Option<usize> {
         match self {
             Self::Active(info) => Some(info.slot),
             _ => None,
@@ -174,10 +174,6 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
         if slot_count > MAX_SLOTS {
             return Err(EINVAL);
         }
-        // Since the slot index is stored in SeatInfo as a u8, the maximum number of slots is 256.
-        if slot_count > u8::MAX as usize + 1 {
-            return Err(EINVAL);
-        }
 
         Ok(Self {
             manager,
@@ -193,7 +189,7 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
         let cur_seqno = self.use_seqno;
 
         *T::seat(&slot_data).access_mut(self) = Seat::Active(SeatInfo {
-            slot: slot_idx as u8,
+            slot: slot_idx,
             seqno: cur_seqno,
         });
 
@@ -221,7 +217,7 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
         };
 
         *T::seat(slot_data).access_mut(self) = Seat::Active(SeatInfo {
-            slot: slot_idx as u8,
+            slot: slot_idx,
             seqno: cur_seqno,
         });
 
@@ -325,8 +321,8 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
     /// If they don't match, the seat is stale and is reset to `NoSeat`.
     fn check_seat(&mut self, locked_seat: &LockedSeat<T, MAX_SLOTS>) {
         let (slot_idx, seat_seqno, is_active) = match locked_seat.access(self) {
-            Seat::Active(seat_info) => (seat_info.slot as usize, seat_info.seqno, true),
-            Seat::Idle(seat_info) => (seat_info.slot as usize, seat_info.seqno, false),
+            Seat::Active(seat_info) => (seat_info.slot, seat_info.seqno, true),
+            Seat::Idle(seat_info) => (seat_info.slot, seat_info.seqno, false),
             _ => return,
         };
 
@@ -353,7 +349,7 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
 
         // Copy out only the slot index so the borrow of slot_data ends here.
         let slot_idx = match T::seat(&slot_data).access(self) {
-            Seat::Active(seat_info) | Seat::Idle(seat_info) => Some(seat_info.slot as usize),
+            Seat::Active(seat_info) | Seat::Idle(seat_info) => Some(seat_info.slot),
             Seat::NoSeat => None,
         };
 
@@ -368,7 +364,7 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
     pub(crate) fn idle(&mut self, locked_seat: &LockedSeat<T, MAX_SLOTS>) -> Result {
         self.check_seat(locked_seat);
         if let Seat::Active(seat_info) = locked_seat.access(self) {
-            self.idle_slot(seat_info.slot as usize, locked_seat)?;
+            self.idle_slot(seat_info.slot, locked_seat)?;
         }
         Ok(())
     }
@@ -379,8 +375,7 @@ impl<T: SlotOperations<MAX_SLOTS>, const MAX_SLOTS: usize> SlotManager<T, MAX_SL
 
         match locked_seat.access(self) {
             Seat::Active(seat_info) | Seat::Idle(seat_info) => {
-                let slot_idx = seat_info.slot as usize;
-                self.evict_slot(slot_idx, locked_seat)?;
+                self.evict_slot(seat_info.slot, locked_seat)?;
             }
             _ => (),
         }

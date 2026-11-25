@@ -467,10 +467,7 @@ impl<'drm> AsSlotManager<'drm> {
     ) -> Result {
         let seat = vm_as_data.as_seat.access(self);
         match seat.slot() {
-            Some(slot) => {
-                let as_nr = slot as usize;
-                self.as_start_update(as_nr, region)
-            }
+            Some(slot) => self.as_start_update(slot, region),
             _ => Ok(()),
         }
     }
@@ -479,10 +476,7 @@ impl<'drm> AsSlotManager<'drm> {
     pub(super) fn end_vm_update(&mut self, vm_as_data: &VmAsData<'drm>) -> Result {
         let seat = vm_as_data.as_seat.access(self);
         match seat.slot() {
-            Some(slot) => {
-                let as_nr = slot as usize;
-                self.as_end_update(as_nr)
-            }
+            Some(slot) => self.as_end_update(slot),
             _ => Ok(()),
         }
     }
@@ -491,10 +485,7 @@ impl<'drm> AsSlotManager<'drm> {
     pub(super) fn flush_vm(&mut self, vm_as_data: &VmAsData<'drm>) -> Result {
         let seat = vm_as_data.as_seat.access(self);
         match seat.slot() {
-            Some(slot) => {
-                let as_nr = slot as usize;
-                self.as_flush(as_nr)
-            }
+            Some(slot) => self.as_flush(slot),
             _ => Ok(()),
         }
     }
