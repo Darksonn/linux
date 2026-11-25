@@ -251,7 +251,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<GpuCommand> for Bounded<u32, 8> {
+        #[expect(clippy::as_conversions)]
         fn from(cmd: GpuCommand) -> Self {
+            // CAST: `GpuCommand` is `#[repr(u8)]`, so the cast is lossless.
             (cmd as u8).into()
         }
     }
@@ -279,7 +281,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<ResetMode> for Bounded<u32, 4> {
+        #[expect(clippy::as_conversions)]
         fn from(mode: ResetMode) -> Self {
+            // CAST: `ResetMode` is `#[repr(u8)]`, so the cast is lossless.
             Bounded::try_new(mode as u32).unwrap()
         }
     }
@@ -313,7 +317,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<FlushMode> for Bounded<u32, 4> {
+        #[expect(clippy::as_conversions)]
         fn from(mode: FlushMode) -> Self {
+            // CAST: `FlushMode` is `#[repr(u8)]`, so the cast is lossless.
             Bounded::try_new(mode as u32).unwrap()
         }
     }
@@ -434,7 +440,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<ExceptionType> for Bounded<u32, 8> {
+        #[expect(clippy::as_conversions)]
         fn from(exc: ExceptionType) -> Self {
+            // CAST: `ExceptionType` is `#[repr(u8)]`, so the cast is lossless.
             (exc as u8).into()
         }
     }
@@ -465,7 +473,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<AccessType> for Bounded<u32, 2> {
+        #[expect(clippy::as_conversions)]
         fn from(access: AccessType) -> Self {
+            // CAST: `AccessType` is `#[repr(u8)]`, so the cast is lossless.
             Bounded::try_new(access as u32).unwrap()
         }
     }
@@ -772,7 +782,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<CoherencyMode> for Bounded<u32, 32> {
+        #[expect(clippy::as_conversions)]
         fn from(mode: CoherencyMode) -> Self {
+            // CAST: `CoherencyMode` is `#[repr(u8)]`, so the cast is lossless.
             (mode as u8).into()
         }
     }
@@ -814,7 +826,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<McuControlMode> for Bounded<u32, 2> {
+        #[expect(clippy::as_conversions)]
         fn from(mode: McuControlMode) -> Self {
+            // CAST: `McuControlMode` is `#[repr(u8)]`, so the cast is lossless.
             Bounded::try_new(mode as u32).unwrap()
         }
     }
@@ -857,7 +871,9 @@ pub(crate) mod gpu_control {
     }
 
     impl From<McuStatus> for Bounded<u32, 2> {
+        #[expect(clippy::as_conversions)]
         fn from(status: McuStatus) -> Self {
+            // CAST: `McuStatus` is `#[repr(u8)]`, so the cast is lossless.
             Bounded::try_new(status as u32).unwrap()
         }
     }
@@ -1050,7 +1066,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<AllocPolicySelect> for Bounded<u8, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(val: AllocPolicySelect) -> Self {
+                // CAST: `AllocPolicySelect` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(val as u8).unwrap()
             }
         }
@@ -1095,7 +1113,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<Coherency> for Bounded<u8, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(val: Coherency) -> Self {
+                // CAST: `Coherency` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(val as u8).unwrap()
             }
         }
@@ -1126,7 +1146,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<MemoryType> for Bounded<u8, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(val: MemoryType) -> Self {
+                // CAST: `MemoryType` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(val as u8).unwrap()
             }
         }
@@ -1379,7 +1401,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<MmuCommand> for Bounded<u32, 8> {
+            #[expect(clippy::as_conversions)]
             fn from(cmd: MmuCommand) -> Self {
+                // CAST: `MmuCommand` is `#[repr(u8)]`, so the cast is lossless.
                 (cmd as u8).into()
             }
         }
@@ -1476,7 +1500,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<MmuExceptionType> for Bounded<u32, 8> {
+            #[expect(clippy::as_conversions)]
             fn from(exc: MmuExceptionType) -> Self {
+                // CAST: `MmuExceptionType` is `#[repr(u8)]`, so the cast is lossless.
                 (exc as u8).into()
             }
         }
@@ -1508,7 +1534,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<MmuAccessType> for Bounded<u32, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(access: MmuAccessType) -> Self {
+                // CAST: `MmuAccessType` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(access as u32).unwrap()
             }
         }
@@ -1575,7 +1603,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<AddressSpaceMode> for Bounded<u64, 4> {
+            #[expect(clippy::as_conversions)]
             fn from(mode: AddressSpaceMode) -> Self {
+                // CAST: `AddressSpaceMode` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(mode as u64).unwrap()
             }
         }
@@ -1672,7 +1702,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<InaBits> for Bounded<u64, 5> {
+            #[expect(clippy::as_conversions)]
             fn from(bits: InaBits) -> Self {
+                // CAST: `InaBits` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(bits as u64).unwrap()
             }
         }
@@ -1703,7 +1735,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<PtwMemattr> for Bounded<u64, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(attr: PtwMemattr) -> Self {
+                // CAST: `PtwMemattr` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(attr as u64).unwrap()
             }
         }
@@ -1735,7 +1769,9 @@ pub(crate) mod mmu_control {
         }
 
         impl From<PtwShareability> for Bounded<u64, 2> {
+            #[expect(clippy::as_conversions)]
             fn from(sh: PtwShareability) -> Self {
+                // CAST: `PtwShareability` is `#[repr(u8)]`, so the cast is lossless.
                 Bounded::try_new(sh as u64).unwrap()
             }
         }

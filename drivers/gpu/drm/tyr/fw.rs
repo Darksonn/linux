@@ -98,7 +98,9 @@ impl From<Bounded<u32, 2>> for CacheMode {
 }
 
 impl From<CacheMode> for Bounded<u32, 2> {
+    #[expect(clippy::as_conversions)]
     fn from(value: CacheMode) -> Self {
+        // CAST: `CacheMode` is `#[repr(u8)]`, so the cast is lossless.
         Bounded::try_new(value as u32).unwrap()
     }
 }
