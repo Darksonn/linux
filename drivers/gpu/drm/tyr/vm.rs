@@ -866,22 +866,18 @@ fn pt_map(
             }
         };
 
+        // CAST: `PhysAddr` is as wide as a DMA address on the platforms we care about.
+        #[expect(clippy::as_conversions)]
+        let curr_paddr = curr_paddr as PhysAddr;
+
         // SAFETY:
         // No other io-pgtable operation can currently access this range because Tyr holds
         // the gpuvm_unique mutex for the entire sm_map() operation.
         // The addresses being mapped won't overlap any existing mappings in this
         // page table because drm_gpuvm_sm_map() checks each requested mapping and either unmaps
         // or remaps any overlap before creating the new mapping.
-        let (mapped, result) = unsafe {
-            pt.map_pages(
-                curr_iova,
-                curr_paddr as PhysAddr,
-                pgsize,
-                pgcount,
-                prot,
-                GFP_KERNEL,
-            )
-        };
+        let (mapped, result) =
+            unsafe { pt.map_pages(curr_iova, curr_paddr, pgsize, pgcount, prot, GFP_KERNEL) };
 
         if let Err(e) = result {
             // If map_pages fails, mapped will be zero because the ARM LPAE backend
