@@ -16,8 +16,9 @@ use core::{
 };
 
 use kernel::{
-    bits::bit_u32,
+    bitfield,
     device::Device,
+    num::Bounded,
     prelude::*,
     sizes::SZ_4K, //
 };
@@ -234,12 +235,12 @@ impl<'a> FwParser<'a> {
         }
 
         let entry_section = EntrySection {
-            entry_hdr: EntryHeader(self.cursor.read_u32()?),
+            entry_hdr: EntryHeader::from_raw(self.cursor.read_u32()?),
             inner: None,
         };
 
         let firmware_size = self.cursor.len();
-        let entry_size = entry_section.entry_hdr.size() as usize;
+        let entry_size = usize::from(entry_section.entry_hdr.size());
 
         if self.cursor.pos() % size_of::<u32>() != 0
             || entry_size % size_of::<u32>() != 0
@@ -291,7 +292,7 @@ impl<'a> FwParser<'a> {
                         dev_err!(
                             self.cursor.dev,
                             "Failed to handle firmware entry type: {}",
-                            entry_section.entry_hdr.entry_type_raw()
+                            entry_section.entry_hdr.entry_type_raw().get()
                         );
                         Err(EINVAL)
                     }
@@ -526,31 +527,21 @@ struct EntrySection {
     inner: Option<ParsedSection>,
 }
 
-/// Header for a firmware entry, packed into a single u32.
-///
-/// The entry header encodes the entry type, size, and optional flag in a
-/// 32-bit value with the following layout:
-/// - Bits 0-7: Entry type
-/// - Bits 8-15: Size in bytes
-/// - Bit 31: Optional flag
-struct EntryHeader(u32);
+bitfield! {
+    /// Header for a firmware entry, packed into a single u32.
+    struct EntryHeader(u32) {
+        /// Entry type.
+        7:0 entry_type_raw;
+        /// Size in bytes.
+        15:8 size;
+        /// Optional flag.
+        31:31 optional => bool;
+    }
+}
 
 impl EntryHeader {
-    fn entry_type_raw(&self) -> u8 {
-        (self.0 & 0xff) as u8
-    }
-
     fn entry_type(&self) -> Result<EntryType> {
-        let v = self.entry_type_raw();
-        EntryType::try_from(v)
-    }
-
-    fn optional(&self) -> bool {
-        self.0 & bit_u32(31) != 0
-    }
-
-    fn size(&self) -> u32 {
-        self.0 >> 8 & 0xff
+        EntryType::try_from(self.entry_type_raw())
     }
 }
 
@@ -571,11 +562,11 @@ enum EntryType {
     BuildInfoMetadata = 6,
 }
 
-impl TryFrom<u8> for EntryType {
+impl TryFrom<Bounded<u32, 8>> for EntryType {
     type Error = Error;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
+    fn try_from(value: Bounded<u32, 8>) -> Result<Self, Self::Error> {
+        match value.get() {
             0 => Ok(EntryType::Iface),
             1 => Ok(EntryType::Config),
             2 => Ok(EntryType::FutfTest),
