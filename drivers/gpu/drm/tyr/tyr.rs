@@ -5,6 +5,11 @@
 //! The name "Tyr" is inspired by Norse mythology, reflecting Arm's tradition of
 //! naming their GPUs after Nordic mythological figures and places.
 
+// `as` conversions can silently truncate, so they are denied by default in
+// this driver. A conversion that cannot be avoided is justified in a
+// `// CAST:` comment and marked with `#[expect(clippy::as_conversions)]`.
+#![deny(clippy::as_conversions)]
+
 use crate::driver::TyrPlatformDriver;
 
 mod driver;
