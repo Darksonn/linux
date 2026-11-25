@@ -41,6 +41,7 @@ use kernel::{
         ARM64LPAES1, //
     },
     new_mutex,
+    num::casts::FromSafeCast,
     prelude::*,
     sizes::SizeConstants,
     sync::{
@@ -616,7 +617,7 @@ impl<'drm> DriverGpuVm for GpuVmData<'drm> {
         // end of the GEM buffer itself.
         let gem_range_end = op.gem_offset().checked_add(op.length()).ok_or(EINVAL)?;
 
-        if gem_range_end > op.obj().size() as u64 {
+        if gem_range_end > u64::from_safe_cast(op.obj().size()) {
             dev_err!(
                 context.dev,
                 "Requested GEM range ends at {} which is beyond the GEM buffer size {}",
@@ -891,7 +892,7 @@ fn pt_map(
             return Err(ENOMEM);
         }
 
-        segment_mapped += mapped as u64;
+        segment_mapped += u64::from_safe_cast(mapped);
     }
 
     Ok(segment_mapped)
@@ -937,8 +938,8 @@ fn pt_unmap(dev: &Device, pt: &IoPageTable<'_, ARM64LPAES1>, range: Range<u64>) 
             return Err(EINVAL);
         }
 
-        bytes_left_to_unmap -= unmapped as u64;
-        iova += unmapped as u64;
+        bytes_left_to_unmap -= u64::from_safe_cast(unmapped);
+        iova += u64::from_safe_cast(unmapped);
     }
 
     Ok(())

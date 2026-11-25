@@ -26,7 +26,10 @@ use kernel::{
         poll,
         Io, //
     },
-    num::Bounded,
+    num::{
+        casts::FromSafeCast,
+        Bounded, //
+    },
     prelude::*,
     str::CString,
     sync::{
@@ -238,8 +241,8 @@ impl<'drm> Firmware<'drm> {
                     parsed.vm_map_flags,
                 )?;
 
-                let section_start = parsed.data_range.start as usize;
-                let section_end = parsed.data_range.end as usize;
+                let section_start = usize::from_safe_cast(parsed.data_range.start);
+                let section_end = usize::from_safe_cast(parsed.data_range.end);
                 let mut data = KVec::new();
 
                 // Ensure that the firmware slice is not out of bounds.

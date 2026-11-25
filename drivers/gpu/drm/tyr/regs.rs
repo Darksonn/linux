@@ -1154,7 +1154,7 @@ pub(crate) mod mmu_control {
             type Error = Error;
 
             fn try_from(val: Bounded<u64, 8>) -> Result<Self, Self::Error> {
-                Ok(Self::from_raw(val.get() as u8))
+                Ok(Self::from_raw(u8::from(val)))
             }
         }
 

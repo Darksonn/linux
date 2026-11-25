@@ -18,7 +18,10 @@ use core::{
 use kernel::{
     bitfield,
     device::Device,
-    num::Bounded,
+    num::{
+        casts::FromSafeCast,
+        Bounded, //
+    },
     prelude::*,
     sizes::SizeConstants, //
 };
@@ -182,7 +185,7 @@ impl<'a> FwParser<'a> {
     /// in the binary, extracting section information needed for loading.
     pub(super) fn parse(&mut self) -> Result<KVec<ParsedSection>> {
         let fw_header = self.parse_fw_header()?;
-        let header_end = fw_header.size as usize;
+        let header_end = usize::from_safe_cast(fw_header.size);
 
         let mut parsed_sections = KVec::new();
         while self.cursor.pos() < header_end {
@@ -210,7 +213,7 @@ impl<'a> FwParser<'a> {
             }
         };
 
-        if fw_header.size as usize > self.cursor.len() {
+        if usize::from_safe_cast(fw_header.size) > self.cursor.len() {
             dev_err!(self.cursor.dev, "Firmware image is truncated");
             return Err(EINVAL);
         }
@@ -323,7 +326,7 @@ impl<'a> FwParser<'a> {
             return Err(EINVAL);
         }
 
-        if section_hdr.data.end as usize > firmware_size {
+        if usize::from_safe_cast(section_hdr.data.end) > firmware_size {
             dev_err!(
                 entry_cursor.dev,
                 "Firmware data range {:#x}..{:#x} exceeds firmware size {:#x}",
