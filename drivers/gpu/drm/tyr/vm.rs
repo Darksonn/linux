@@ -42,11 +42,7 @@ use kernel::{
     },
     new_mutex,
     prelude::*,
-    sizes::{
-        SZ_1G,
-        SZ_2M,
-        SZ_4K, //
-    },
+    sizes::SizeConstants,
     sync::{
         aref::ARef,
         Arc,
@@ -491,9 +487,9 @@ impl<'drm> Vm<'drm> {
         flags: VmMapFlags,
     ) -> Result {
         if map_size == 0
-            || va % SZ_4K as u64 != 0
-            || bo_offset % SZ_4K as u64 != 0
-            || map_size % SZ_4K as u64 != 0
+            || va % u64::SZ_4K != 0
+            || bo_offset % u64::SZ_4K != 0
+            || map_size % u64::SZ_4K != 0
         {
             return Err(EINVAL);
         }
@@ -545,7 +541,7 @@ impl<'drm> Vm<'drm> {
     /// This removes any existing mappings in the specified range, freeing the
     /// virtual address space for reuse.
     pub(crate) fn unmap_range(&self, va: u64, size: u64) -> Result {
-        if size == 0 || va % SZ_4K as u64 != 0 || size % SZ_4K as u64 != 0 {
+        if size == 0 || va % u64::SZ_4K != 0 || size % u64::SZ_4K != 0 {
             return Err(EINVAL);
         }
 
@@ -791,27 +787,27 @@ impl<'drm> DriverGpuVm for GpuVmData<'drm> {
 /// Returns the page size (4KB or 2MB) and the number of pages that can be mapped at that size.
 fn get_pgsize(addr: u64, size: u64) -> (u64, u64) {
     // Get the distance to the next boundary of 2MB block
-    let blk_offset_2m = addr.wrapping_neg() % (SZ_2M as u64);
+    let blk_offset_2m = addr.wrapping_neg() % u64::SZ_2M;
 
     // Use 4K blocks if the address is not 2MB aligned, or we have less than 2MB to map
-    if blk_offset_2m != 0 || size < SZ_2M as u64 {
+    if blk_offset_2m != 0 || size < u64::SZ_2M {
         let pgcount = if blk_offset_2m == 0 {
-            size / SZ_4K as u64
+            size / u64::SZ_4K
         } else {
-            u64::min(blk_offset_2m, size) / SZ_4K as u64
+            u64::min(blk_offset_2m, size) / u64::SZ_4K
         };
-        return (SZ_4K as u64, pgcount);
+        return (u64::SZ_4K, pgcount);
     }
 
-    let blk_offset_1g = addr.wrapping_neg() % (SZ_1G as u64);
+    let blk_offset_1g = addr.wrapping_neg() % u64::SZ_1G;
     let blk_offset = if blk_offset_1g == 0 {
-        SZ_1G as u64
+        u64::SZ_1G
     } else {
         blk_offset_1g
     };
-    let pgcount = u64::min(blk_offset, size) / SZ_2M as u64;
+    let pgcount = u64::min(blk_offset, size) / u64::SZ_2M;
 
-    (SZ_2M as u64, pgcount)
+    (u64::SZ_2M, pgcount)
 }
 
 /// Maps a physical address range into the page table at the specified virtual address.

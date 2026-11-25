@@ -20,7 +20,7 @@ use kernel::{
     device::Device,
     num::Bounded,
     prelude::*,
-    sizes::SZ_4K, //
+    sizes::SizeConstants, //
 };
 
 use crate::{
@@ -334,7 +334,7 @@ impl<'a> FwParser<'a> {
             return Err(EINVAL);
         }
 
-        if section_hdr.va.start as usize % SZ_4K != 0 || section_hdr.va.end as usize % SZ_4K != 0 {
+        if section_hdr.va.start % u32::SZ_4K != 0 || section_hdr.va.end % u32::SZ_4K != 0 {
             dev_err!(
                 entry_cursor.dev,
                 "Firmware virtual address range {:#x}..{:#x} is not page aligned",
